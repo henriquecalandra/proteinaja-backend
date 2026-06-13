@@ -1,15 +1,13 @@
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
-from passlib.context import CryptContext
+import bcrypt
 from app.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 def hash_senha(senha: str) -> str:
-    return pwd_context.hash(senha)
+    return bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
 
 def verificar_senha(senha: str, hash: str) -> bool:
-    return pwd_context.verify(senha, hash)
+    return bcrypt.checkpw(senha.encode(), hash.encode())
 
 def criar_token(email: str) -> str:
     expire = datetime.utcnow() + timedelta(hours=settings.jwt_expire_hours)
