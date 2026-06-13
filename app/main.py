@@ -7,7 +7,17 @@ app = FastAPI(title="ProteínaJá API", version="1.0.0")
 
 @app.on_event("startup")
 def create_tables():
+    from app.database import SessionLocal
+    from app.models import Usuario
+    from app.services.auth import hash_senha
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        if not db.query(Usuario).filter(Usuario.email == "marcos@frigorifico.com").first():
+            db.add(Usuario(nome="Marcos Ribeiro", email="marcos@frigorifico.com", senha_hash=hash_senha("senha123")))
+            db.commit()
+    finally:
+        db.close()
 
 app.add_middleware(
     CORSMiddleware,
