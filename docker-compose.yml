@@ -1,0 +1,63 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  evolution-api:
+    image: atendai/evolution-api:latest
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_URL=http://localhost:8080
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_ENABLED=false
+      - STORE_MESSAGES=true
+      - STORE_MESSAGE_UP=true
+    volumes:
+      - evolution_data:/evolution/instances
+
+  backend:
+    build: .
+    restart: always
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ../proteinaja-frontend
+    restart: always
+    ports:
+      - "3000:80"
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_certs:/etc/letsencrypt
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+  evolution_data:
+  certbot_certs:
