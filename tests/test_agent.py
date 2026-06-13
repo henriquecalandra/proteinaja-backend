@@ -29,11 +29,13 @@ def test_deve_escalar_para_humano_true():
 def test_deve_escalar_para_humano_false():
     assert deve_escalar_para_humano("Pedido confirmado! Entrega em 2 dias úteis.") is False
 
-def test_gerar_resposta_chama_claude():
-    mock_content = MagicMock()
-    mock_content.text = "Temos picanha a R$ 89/kg. Quantos kg você precisa?"
+def test_gerar_resposta_chama_groq():
+    mock_message = MagicMock()
+    mock_message.content = "Temos picanha a R$ 89/kg. Quantos kg você precisa?"
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
     mock_response = MagicMock()
-    mock_response.content = [mock_content]
-    with patch("app.services.agent.client_anthropic.messages.create", return_value=mock_response):
+    mock_response.choices = [mock_choice]
+    with patch("app.services.agent.client_groq.chat.completions.create", return_value=mock_response):
         resposta = gerar_resposta("Tem picanha?", [], make_cliente())
         assert "picanha" in resposta.lower()

@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     evolution_api_url: str = "http://evolution-api:8080"
     evolution_api_key: str = "trocar_em_producao"
     evolution_instance_name: str = "frigorifico_sao_lucas"
-    anthropic_api_key: str = "sk-ant-xxxxx"
+    groq_api_key: str = "gsk_xxxxx"
     jwt_secret: str = "secret_muito_longo_para_producao"
     jwt_algorithm: str = "HS256"
     jwt_expire_hours: int = 24

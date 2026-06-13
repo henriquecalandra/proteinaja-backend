@@ -1,8 +1,8 @@
-import anthropic
+from groq import Groq
 from app.config import settings
 from app.models import Mensagem, Cliente
 
-client_anthropic = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+client_groq = Groq(api_key=settings.groq_api_key)
 
 CATALOGO = """
 Produtos disponíveis:
@@ -52,14 +52,14 @@ Regras:
 - Mensagens curtas e diretas — sem parágrafos longos"""
 
     historico_formatado = montar_historico(historico)
+    messages = [{"role": "system", "content": system_prompt}] + historico_formatado + [{"role": "user", "content": mensagem_cliente}]
 
-    response = client_anthropic.messages.create(
-        model="claude-haiku-4-5-20251001",
+    response = client_groq.chat.completions.create(
+        model="llama-3.1-8b-instant",
         max_tokens=500,
-        system=system_prompt,
-        messages=historico_formatado + [{"role": "user", "content": mensagem_cliente}],
+        messages=messages,
     )
-    return response.content[0].text
+    return response.choices[0].message.content
 
 def deve_escalar_para_humano(resposta: str) -> bool:
     gatilhos = ["verificar com o gerente", "falar com o responsável", "vou checar com a equipe"]
