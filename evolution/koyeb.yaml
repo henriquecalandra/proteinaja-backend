@@ -1,0 +1,71 @@
+# Koyeb config para Evolution API (always-on, free tier)
+# Deploy: koyeb deploy (ou use o painel web > Create Service > Docker)
+# Antes, crie os secrets:
+#   koyeb secret create evolution-api-key   (sua AUTHENTICATION_API_KEY)
+#   koyeb secret create neon-db-uri         (connection string do Neon)
+#
+# Docs: https://www.koyeb.com/docs/build-and-deploy/config-files
+
+app: proteinaja-evolution
+services:
+  - name: evolution-api
+    type: web
+    # Imagem oficial da Evolution API v2 (porta 8080)
+    docker:
+      image: atendai/evolution-api:v2.1.1
+    # Instance FREE da Koyeb: 512MB / 0.1 vCPU, always-on (nao dorme)
+    instance_types:
+      - type: free
+    scaling:
+      min: 1
+      max: 1
+    regions:
+      - was   # Washington (free). Use 'fra' (Frankfurt) se preferir.
+    ports:
+      - port: 8080
+        protocol: http
+    routes:
+      - port: 8080
+        path: /
+    health_checks:
+      - http:
+          port: 8080
+          path: /
+    env:
+      # ---- Servidor ----
+      - name: SERVER_PORT
+        value: "8080"
+      - name: SERVER_TYPE
+        value: http
+      # ---- Autenticacao (segredo) ----
+      - name: AUTHENTICATION_API_KEY
+        secret: evolution-api-key
+      # ---- Banco: Postgres no Neon (segredo) ----
+      - name: DATABASE_ENABLED
+        value: "true"
+      - name: DATABASE_PROVIDER
+        value: postgresql
+      - name: DATABASE_CONNECTION_URI
+        secret: neon-db-uri
+      - name: DATABASE_CONNECTION_CLIENT_NAME
+        value: proteinaja
+      - name: DATABASE_SAVE_DATA_INSTANCE
+        value: "true"
+      - name: DATABASE_SAVE_DATA_NEW_MESSAGE
+        value: "true"
+      - name: DATABASE_SAVE_MESSAGE_UPDATE
+        value: "true"
+      - name: DATABASE_SAVE_DATA_CONTACTS
+        value: "true"
+      - name: DATABASE_SAVE_DATA_CHATS
+        value: "true"
+      # ---- Cache: Redis DESLIGADO, usa cache local (economiza 1 servico) ----
+      - name: CACHE_REDIS_ENABLED
+        value: "false"
+      - name: CACHE_LOCAL_ENABLED
+        value: "true"
+      # ---- Logs enxutos ----
+      - name: LOG_LEVEL
+        value: "ERROR,WARN"
+      - name: LOG_BAILEYS
+        value: error

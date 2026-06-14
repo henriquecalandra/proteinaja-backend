@@ -1,0 +1,62 @@
+# ============================================================
+# ALTERNATIVA / FALLBACK: rodar a Evolution API LOCALMENTE
+# (100% gratis, sem cartao de credito) - ideal para demo academica.
+# Sobe Evolution + Postgres local (Redis desligado).
+#
+# Uso:
+#   1) copie .env.example para .env e ajuste AUTHENTICATION_API_KEY
+#   2) docker compose -f docker-compose.evolution.yml up -d
+#   3) abra http://localhost:8080/manager e logue com a apikey
+#   4) crie a instancia e escaneie o QR code
+#
+# Obs: a sessao do WhatsApp so fica viva enquanto seu PC/Docker estiver ligado.
+# ============================================================
+services:
+  evolution-api:
+    image: atendai/evolution-api:v2.1.1
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: "8080"
+      SERVER_TYPE: http
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY:-TROQUE_ESTA_CHAVE}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: proteinaja
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      LOG_LEVEL: "ERROR,WARN"
+      LOG_BAILEYS: error
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: evolution-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  evolution_instances:
+  evolution_pgdata:

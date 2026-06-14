@@ -1,0 +1,50 @@
+name: Keep Alive (Render)
+
+# Mantem o backend no Render free tier acordado, evitando o cold start.
+# O Render free derruba o servico apos ~15 min sem trafego, e o primeiro
+# request seguinte pode levar ~50s para subir novamente (cold start).
+#
+# Trade-off de horas do Render free tier (750h/mes):
+#   - 1 servico ligado 24/7 consome ~720-744h/mes, ou seja, cabe no limite,
+#     mas no fio. Pingar 24h por dia praticamente zera a margem de seguranca
+#     e nao traz beneficio durante a madrugada (ninguem usa).
+#   - Por isso pingamos APENAS no horario util (08h-22h, horario de Brasilia
+#     = 11:00-01:00 UTC), o que reduz o consumo e ainda assim entrega um
+#     backend sempre "quente" quando ha gente usando o WhatsApp.
+#   - Intervalo de 13 min: abaixo da janela de 15 min do Render. Como o cron
+#     do GitHub Actions tem granularidade minima de ~5 min e costuma ATRASAR
+#     varios minutos em repos gratuitos, 13 min da folga para que mesmo um
+#     atraso de 1-2 min nao deixe o servico passar dos 15 min e dormir.
+
+on:
+  schedule:
+    # A cada 13 min, das 11:00 as 01:00 UTC (08h-22h America/Sao_Paulo).
+    # Observacao: o cron do GitHub Actions e best-effort e pode atrasar.
+    - cron: "*/13 11-23 * * *"
+    - cron: "*/13 0 * * *"
+  workflow_dispatch:
+
+# Evita execucoes empilhadas caso o GitHub atrase e dispare varias ao mesmo tempo.
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health
+        run: |
+          # --max-time 90: o primeiro ping pode pegar o cold start (~50s),
+          # entao damos folga generosa de timeout.
+          # --retry 2 com backoff: se o cold start estourar o timeout, tenta de novo.
+          # --fail: retorna codigo de erro em respostas HTTP >= 400.
+          curl --fail --show-error --silent \
+               --location \
+               --max-time 90 \
+               --retry 2 \
+               --retry-delay 10 \
+               --retry-all-errors \
+               -o /dev/null -w "HTTP %{http_code} em %{time_total}s\n" \
+               https://proteinaja-backend.onrender.com/health
