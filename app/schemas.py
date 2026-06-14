@@ -71,6 +71,7 @@ class RegisterRequest(BaseModel):
     nome: str
     email: str
     senha: str
+    nome_empresa: str | None = None
 
 class ClienteCreate(BaseModel):
     nome: str
@@ -132,6 +133,11 @@ class EmpresaSchema(BaseModel):
     evolution_url: str | None = None
     evolution_instance: str | None = None
     whatsapp_conectado: bool
+    email_contato: str | None = None
+    telefone: str | None = None
+    endereco: str | None = None
+    responsavel: str | None = None
+    segmento: str | None = None
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -142,6 +148,11 @@ class EmpresaUpdate(BaseModel):
     whatsapp_numero: str | None = None
     evolution_url: str | None = None
     evolution_instance: str | None = None
+    email_contato: str | None = None
+    telefone: str | None = None
+    endereco: str | None = None
+    responsavel: str | None = None
+    segmento: str | None = None
 
 class AdminOverview(BaseModel):
     total_empresas: int
@@ -157,3 +168,34 @@ class UsuarioMe(BaseModel):
     role: str
     empresa_id: int | None = None
     model_config = {"from_attributes": True}
+
+# ---- Dashboard analitico ----
+
+class FaturamentoDia(BaseModel):
+    dia: str
+    total: float
+    qtd: int
+
+class PedidosPorStatus(BaseModel):
+    confirmado: int
+    negociando: int
+    aguardando: int
+    entregue: int
+
+class TopProduto(BaseModel):
+    produto: str
+    qtd_kg: float
+    receita: float
+
+class TopCliente(BaseModel):
+    nome: str
+    total: float
+
+class DashboardAnalytics(BaseModel):
+    faturamento_por_dia: list[FaturamentoDia]
+    pedidos_por_status: PedidosPorStatus
+    top_produtos: list[TopProduto]
+    top_clientes: list[TopCliente]
+    ticket_medio: float
+    total_a_receber: float
+    total_pago: float

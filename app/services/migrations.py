@@ -125,6 +125,21 @@ def ensure_schema(engine: Engine) -> None:
                     "sqlite": "INTEGER",
                 },
             )
+        # Cadastro completo da empresa: 5 colunas de texto em 'empresas'.
+        # VARCHAR/TEXT, nullable, sem default (NAO sao INTEGER).
+        for coluna, tipo in (
+            ("email_contato", "VARCHAR(200)"),
+            ("telefone", "VARCHAR(40)"),
+            ("endereco", "TEXT"),
+            ("responsavel", "VARCHAR(200)"),
+            ("segmento", "VARCHAR(40)"),
+        ):
+            _add_coluna(
+                engine,
+                "empresas",
+                coluna,
+                {"postgresql": tipo, "sqlite": tipo},
+            )
         # Remove a UNIQUE legada de produtos.nome (criada no Postgres antes do
         # multi-tenant). Produtos agora sao por empresa -> o nome NAO e mais
         # unico global. create_all/_add_coluna nao removem constraints; fazemos

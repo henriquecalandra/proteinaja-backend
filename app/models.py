@@ -97,6 +97,11 @@ class Empresa(Base):
     evolution_url: Mapped[str | None] = mapped_column(Text, default=None)
     evolution_instance: Mapped[str | None] = mapped_column(String(100), default=None)
     whatsapp_conectado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    email_contato: Mapped[str | None] = mapped_column(String(200), default=None)
+    telefone: Mapped[str | None] = mapped_column(String(40), default=None)
+    endereco: Mapped[str | None] = mapped_column(Text, default=None)
+    responsavel: Mapped[str | None] = mapped_column(String(200), default=None)
+    segmento: Mapped[str | None] = mapped_column(String(40), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 class Usuario(Base):

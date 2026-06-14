@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Usuario
+from app.models import Usuario, Empresa
 from app.schemas import LoginRequest, TokenResponse, RegisterRequest, UsuarioMe
 from app.services.auth import verificar_senha, criar_token, verificar_token, hash_senha
 
@@ -20,7 +20,19 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(Usuario).filter(Usuario.email == body.email).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="E-mail ja cadastrado")
-    usuario = Usuario(nome=body.nome, email=body.email, senha_hash=hash_senha(body.senha))
+    # Onboarding: cada cadastro cria uma nova empresa (multi-tenant) e o usuario
+    # como dono ('empresa') vinculado a ela.
+    nome_empresa = (body.nome_empresa or "").strip() or f"Empresa de {body.nome}"
+    empresa = Empresa(nome=nome_empresa, plano="starter", ativo=True)
+    db.add(empresa)
+    db.flush()
+    usuario = Usuario(
+        nome=body.nome,
+        email=body.email,
+        senha_hash=hash_senha(body.senha),
+        role="empresa",
+        empresa_id=empresa.id,
+    )
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
