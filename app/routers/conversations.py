@@ -43,3 +43,12 @@ def assumir_conversa(conversa_id: int, db: Session = Depends(get_db), _=Depends(
         conversa.status = ConversaStatus.humano
         db.commit()
     return {"ok": True}
+
+@router.post("/{conversa_id}/close")
+def encerrar_conversa(conversa_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    conversa = db.query(Conversa).filter(Conversa.id == conversa_id).first()
+    if conversa:
+        conversa.status = ConversaStatus.encerrada
+        conversa.updated_at = datetime.utcnow()
+        db.commit()
+    return {"ok": True}

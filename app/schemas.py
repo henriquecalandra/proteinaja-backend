@@ -57,6 +57,11 @@ class DashboardOverview(BaseModel):
     volume_hoje: float
     pct_agente: float
 
+class ClienteDetalhe(BaseModel):
+    cliente: ClienteSchema
+    pedidos: list[PedidoSchema]
+    conversas: list[ConversaSchema]
+
 # ---- Request schemas (Pydantic v2) ----
 
 class RegisterRequest(BaseModel):

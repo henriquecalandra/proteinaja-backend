@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Cliente, Pedido
-from app.schemas import ClienteSchema, ClienteCreate, ClienteUpdate
+from app.models import Cliente, Pedido, Conversa
+from app.schemas import ClienteSchema, ClienteCreate, ClienteUpdate, ClienteDetalhe
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -59,3 +59,21 @@ def atualizar_cliente(cliente_id: int, body: ClienteUpdate,
     schema.total_pedidos = total_pedidos
     schema.valor_total_comprado = float(valor_total)
     return schema
+
+@router.get("/{cliente_id}", response_model=ClienteDetalhe)
+def detalhe_cliente(cliente_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente nao encontrado")
+    total_pedidos = db.query(func.count(Pedido.id))\
+        .filter(Pedido.cliente_id == cliente.id).scalar() or 0
+    valor_total = db.query(func.coalesce(func.sum(Pedido.valor_total), 0.0))\
+        .filter(Pedido.cliente_id == cliente.id).scalar() or 0.0
+    cliente_schema = ClienteSchema.model_validate(cliente)
+    cliente_schema.total_pedidos = total_pedidos
+    cliente_schema.valor_total_comprado = float(valor_total)
+    pedidos = db.query(Pedido).filter(Pedido.cliente_id == cliente_id)\
+        .order_by(Pedido.created_at.desc()).all()
+    conversas = db.query(Conversa).filter(Conversa.cliente_id == cliente_id)\
+        .order_by(Conversa.updated_at.desc()).all()
+    return ClienteDetalhe(cliente=cliente_schema, pedidos=pedidos, conversas=conversas)
