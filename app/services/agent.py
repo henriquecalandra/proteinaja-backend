@@ -1,3 +1,5 @@
+import json
+
 from groq import Groq
 from app.config import settings
 from app.models import Mensagem, Cliente
@@ -70,3 +72,83 @@ Regras:
 def deve_escalar_para_humano(resposta: str) -> bool:
     gatilhos = ["verificar com o gerente", "falar com o responsável", "vou checar com a equipe"]
     return any(g in resposta.lower() for g in gatilhos)
+
+
+def extrair_pedido(historico: list[Mensagem], mensagem_cliente: str, produtos=None) -> list[dict]:
+    """Extrai um pedido FECHADO a partir da conversa, usando o Groq.
+
+    Retorna uma lista de itens [{"produto", "qtd_kg"}] APENAS quando o cliente
+    CONFIRMOU um pedido com quantidades definidas. Caso contrario (sem pedido
+    fechado, em duvida, ou em qualquer falha), retorna [].
+
+    Os nomes de 'produto' sao casados com a lista 'produtos' (nomes do catalogo)
+    fornecida. Parse totalmente defensivo: qualquer excecao -> [].
+    """
+    try:
+        nomes_catalogo = []
+        if produtos:
+            for p in produtos:
+                # produtos pode ser lista de (nome, preco) ou de strings.
+                if isinstance(p, (tuple, list)):
+                    nomes_catalogo.append(str(p[0]))
+                else:
+                    nomes_catalogo.append(str(p))
+        catalogo_txt = ", ".join(nomes_catalogo) if nomes_catalogo else "(catálogo não informado)"
+
+        system_prompt = (
+            "Você é um extrator de pedidos. Analise a conversa de WhatsApp entre um "
+            "frigorífico e um cliente B2B e determine se há um PEDIDO FECHADO, ou seja, "
+            "se o cliente CONFIRMOU itens com quantidades definidas (em kg).\n\n"
+            f"Produtos válidos do catálogo: {catalogo_txt}\n\n"
+            "Regras:\n"
+            "- Responda SOMENTE com JSON válido, sem texto extra, no formato "
+            '{\"itens\":[{\"produto\":\"<nome do catálogo>\",\"qtd_kg\":<número>}]}.\n'
+            "- Use EXATAMENTE os nomes do catálogo acima para o campo \"produto\".\n"
+            "- Inclua itens apenas quando o cliente confirmou o pedido com quantidades claras.\n"
+            "- Se NÃO houver pedido fechado, se estiver em negociação, ou em caso de "
+            'qualquer dúvida, responda {\"itens\":[]}.'
+        )
+
+        historico_formatado = montar_historico(historico)
+        messages = (
+            [{"role": "system", "content": system_prompt}]
+            + historico_formatado
+            + [{"role": "user", "content": mensagem_cliente}]
+        )
+
+        response = client_groq.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            max_tokens=500,
+            messages=messages,
+        )
+        conteudo = response.choices[0].message.content or ""
+
+        # Extrai o bloco JSON de forma defensiva (modelo pode incluir cercas/texto).
+        inicio = conteudo.find("{")
+        fim = conteudo.rfind("}")
+        if inicio == -1 or fim == -1 or fim < inicio:
+            return []
+        dados = json.loads(conteudo[inicio : fim + 1])
+
+        itens_raw = dados.get("itens", [])
+        if not isinstance(itens_raw, list):
+            return []
+
+        resultado: list[dict] = []
+        for item in itens_raw:
+            if not isinstance(item, dict):
+                continue
+            produto = item.get("produto")
+            qtd = item.get("qtd_kg")
+            if not produto:
+                continue
+            try:
+                qtd_f = float(qtd)
+            except (TypeError, ValueError):
+                continue
+            if qtd_f <= 0:
+                continue
+            resultado.append({"produto": str(produto), "qtd_kg": qtd_f})
+        return resultado
+    except Exception:
+        return []

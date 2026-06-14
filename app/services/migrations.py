@@ -67,5 +67,32 @@ def ensure_schema(engine: Engine) -> None:
                 "sqlite": "BOOLEAN NOT NULL DEFAULT 1",
             },
         )
+        _add_coluna(
+            engine,
+            "pedidos",
+            "metodo_pagamento",
+            {
+                "postgresql": "VARCHAR(20)",
+                "sqlite": "VARCHAR(20)",
+            },
+        )
+        _add_coluna(
+            engine,
+            "pedidos",
+            "pago",
+            {
+                "postgresql": "BOOLEAN NOT NULL DEFAULT FALSE",
+                "sqlite": "BOOLEAN NOT NULL DEFAULT 0",
+            },
+        )
+        _add_coluna(
+            engine,
+            "pedidos",
+            "link_pagamento",
+            {
+                "postgresql": "TEXT",
+                "sqlite": "TEXT",
+            },
+        )
     except Exception:
         logger.exception("migrations: ensure_schema falhou (ignorado)")

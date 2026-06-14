@@ -47,6 +47,9 @@ class PedidoSchema(BaseModel):
     valor_total: float
     origem: PedidoOrigem
     status: PedidoStatus
+    metodo_pagamento: str | None = None
+    pago: bool = False
+    link_pagamento: str | None = None
     created_at: datetime
     model_config = {"from_attributes": True}
 

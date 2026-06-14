@@ -1,10 +1,24 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Cliente, Conversa, Mensagem, Produto, ConversaStatus, ClienteTipo
-from app.services.agent import gerar_resposta, deve_escalar_para_humano
+from app.models import (
+    Cliente,
+    Conversa,
+    Mensagem,
+    Pedido,
+    Produto,
+    ConversaStatus,
+    ClienteTipo,
+    PedidoOrigem,
+    PedidoStatus,
+)
+from app.services.agent import gerar_resposta, deve_escalar_para_humano, extrair_pedido
 from app.services.whatsapp import enviar_mensagem
 import asyncio
+import json
+import logging
+
+logger = logging.getLogger("webhook")
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
@@ -96,6 +110,53 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
     msg_agente = Mensagem(conversa_id=conversa.id, origem="agente", texto=resposta)
     db.add(msg_agente)
     db.commit()
+
+    # Extracao automatica de pedido pela IA. TOTALMENTE DEFENSIVO: nunca pode
+    # quebrar o webhook. extrair_pedido retorna [] quando nao ha pedido fechado
+    # (o que evita criar/duplicar pedidos).
+    try:
+        itens_extraidos = extrair_pedido(historico, texto, produtos=produtos)
+        if itens_extraidos:
+            # Mapa nome (lower) -> Produto ativo do catalogo, para obter preco_kg.
+            catalogo = {
+                p.nome.lower(): p
+                for p in db.query(Produto).filter(Produto.ativo.is_(True)).all()
+            }
+            itens_pedido = []
+            valor_total = 0.0
+            for item in itens_extraidos:
+                nome = str(item.get("produto", "")).strip()
+                try:
+                    qtd = float(item.get("qtd_kg"))
+                except (TypeError, ValueError):
+                    continue
+                if not nome or qtd <= 0:
+                    continue
+                produto = catalogo.get(nome.lower())
+                if produto is None:
+                    continue
+                preco = float(produto.preco_kg)
+                itens_pedido.append(
+                    {"produto": produto.nome, "qtd_kg": qtd, "preco_kg": preco}
+                )
+                valor_total += qtd * preco
+            if itens_pedido:
+                pedido = Pedido(
+                    conversa_id=conversa.id,
+                    cliente_id=cliente.id,
+                    itens_json=json.dumps(itens_pedido, ensure_ascii=False),
+                    valor_total=valor_total,
+                    origem=PedidoOrigem.ia,
+                    status=PedidoStatus.confirmado,
+                )
+                db.add(pedido)
+                db.commit()
+    except Exception:
+        logger.exception("webhook: falha ao extrair/criar pedido pela IA (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
     try:
         asyncio.create_task(enviar_mensagem(numero, resposta))
