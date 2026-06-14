@@ -61,6 +61,15 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
         db.commit()
         return {"ok": True}
 
+    # Cliente marcado como atendimento manual: NAO chama a IA.
+    # Salva a mensagem, marca a conversa como humano e retorna.
+    if not cliente.atendido_por_ia:
+        msg = Mensagem(conversa_id=conversa.id, origem="cliente", texto=texto)
+        db.add(msg)
+        conversa.status = ConversaStatus.humano
+        db.commit()
+        return {"ok": True}
+
     msg_cliente = Mensagem(conversa_id=conversa.id, origem="cliente", texto=texto)
     db.add(msg_cliente)
     db.commit()

@@ -11,6 +11,10 @@ def create_tables():
     from app.models import Usuario
     from app.services.auth import hash_senha
     Base.metadata.create_all(bind=engine)
+    # Migracao leve: garante colunas adicionadas apos a criacao inicial do banco
+    # (create_all nao altera tabelas existentes no Postgres do Render).
+    from app.services.migrations import ensure_schema
+    ensure_schema(engine)
     db = SessionLocal()
     try:
         if not db.query(Usuario).filter(Usuario.email == "marcos@frigorifico.com").first():

@@ -18,6 +18,7 @@ class ClienteSchema(BaseModel):
     tipo: ClienteTipo
     cidade: str | None
     ativo: bool
+    atendido_por_ia: bool
     created_at: datetime
     total_pedidos: int = 0
     valor_total_comprado: float = 0.0
@@ -55,3 +56,36 @@ class DashboardOverview(BaseModel):
     conversas_ativas: int
     volume_hoje: float
     pct_agente: float
+
+# ---- Request schemas (Pydantic v2) ----
+
+class RegisterRequest(BaseModel):
+    nome: str
+    email: str
+    senha: str
+
+class ClienteCreate(BaseModel):
+    nome: str
+    whatsapp: str
+    tipo: ClienteTipo
+    cnpj: str | None = None
+    cidade: str | None = None
+    atendido_por_ia: bool = True
+
+class ClienteUpdate(BaseModel):
+    nome: str | None = None
+    cnpj: str | None = None
+    cidade: str | None = None
+    tipo: ClienteTipo | None = None
+    ativo: bool | None = None
+    atendido_por_ia: bool | None = None
+
+class ItemPedidoIn(BaseModel):
+    produto: str
+    qtd_kg: float
+    preco_kg: float
+
+class PedidoCreate(BaseModel):
+    cliente_id: int
+    itens: list[ItemPedidoIn]
+    status: PedidoStatus = PedidoStatus.aguardando

@@ -40,6 +40,10 @@ MARKER_WHATSAPP = "5562991110001"
 # Cliente de teste de QA que deve ser removido junto com seus dados.
 QA_WHATSAPP = "5562988887777"
 
+# Clientes de demo que devem aparecer como atendimento MANUAL (atendido_por_ia=False),
+# para a demo mostrar a diferenca entre clientes "Manual" e "IA".
+MANUAL_WHATSAPPS = ["5564991110004", "5562991110008", "5562991110009"]
+
 # Tabela de precos de referencia (R$/kg) para gerar valores coerentes.
 PRECOS = {
     "Picanha": 64.90,
@@ -116,6 +120,32 @@ def _limpar_qa(db: Session) -> None:
     db.delete(qa)
     db.commit()
     logger.info("seed_demo: cliente de QA %s removido", QA_WHATSAPP)
+
+
+def _marcar_clientes_manuais(db: Session) -> None:
+    """Garante que alguns clientes de demo sejam atendimento manual (IA off).
+
+    Idempotente: roda sempre (mesmo se o seed ja existir) e so atualiza quem
+    ainda nao esta marcado.
+    """
+    try:
+        atualizados = (
+            db.query(Cliente)
+            .filter(
+                Cliente.whatsapp.in_(MANUAL_WHATSAPPS),
+                Cliente.atendido_por_ia.is_(True),
+            )
+            .update({Cliente.atendido_por_ia: False}, synchronize_session=False)
+        )
+        if atualizados:
+            db.commit()
+            logger.info("seed_demo: %d clientes marcados como manuais", atualizados)
+    except Exception:
+        logger.exception("seed_demo: falha ao marcar clientes manuais (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 # Definicao declarativa dos clientes de demonstracao.
@@ -206,7 +236,9 @@ def seed_demo(db: Session) -> None:
         _limpar_qa(db)
 
         # 2) Idempotencia: se o cliente marcador ja existe, nao recria nada.
+        #    Mas a marcacao de clientes manuais roda SEMPRE (idempotente).
         if db.query(Cliente).filter(Cliente.whatsapp == MARKER_WHATSAPP).first():
+            _marcar_clientes_manuais(db)
             logger.info("seed_demo: dados de demo ja existem, nada a fazer")
             return
 
@@ -317,6 +349,10 @@ def seed_demo(db: Session) -> None:
             )
 
         db.commit()
+
+        # 6) Marca alguns clientes como atendimento manual (idempotente).
+        _marcar_clientes_manuais(db)
+
         logger.info(
             "seed_demo: %d clientes, %d conversas, %d pedidos criados",
             len(clist),

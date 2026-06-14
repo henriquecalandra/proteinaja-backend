@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Text, Enum
+from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Text, Enum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 import enum
@@ -34,6 +34,7 @@ class Cliente(Base):
     tipo: Mapped[ClienteTipo] = mapped_column(Enum(ClienteTipo))
     cidade: Mapped[str | None] = mapped_column(String(100))
     ativo: Mapped[bool] = mapped_column(default=True)
+    atendido_por_ia: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     conversas: Mapped[list["Conversa"]] = relationship(back_populates="cliente")
 
