@@ -16,6 +16,15 @@ def create_tables():
         if not db.query(Usuario).filter(Usuario.email == "marcos@frigorifico.com").first():
             db.add(Usuario(nome="Marcos Ribeiro", email="marcos@frigorifico.com", senha_hash=hash_senha("senha123")))
             db.commit()
+        # Seed de dados de demonstracao (idempotente e defensivo).
+        # NUNCA pode derrubar o startup: a propria seed_demo trata excecoes,
+        # mas envolvemos em try/except por seguranca extra.
+        try:
+            from app.services.seed_demo import seed_demo
+            seed_demo(db)
+        except Exception:
+            import logging
+            logging.getLogger("startup").exception("Falha ao rodar seed_demo (ignorado)")
     finally:
         db.close()
 
