@@ -35,6 +35,15 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
     return usuario
 
+def get_usuario_atual(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    """Retorna o objeto Usuario do db (com role e empresa_id) a partir do token.
+
+    Dependencia explicita para isolamento multi-tenant. get_current_user ja
+    retorna o objeto Usuario completo; esta funcao apenas formaliza o contrato
+    usado pelos routers de dados.
+    """
+    return usuario
+
 def require_admin(usuario: Usuario = Depends(get_current_user)) -> Usuario:
     if usuario.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a administradores")

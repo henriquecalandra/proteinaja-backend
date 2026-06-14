@@ -113,5 +113,17 @@ def ensure_schema(engine: Engine) -> None:
                 "sqlite": "INTEGER",
             },
         )
+        # Multi-tenant REAL: coluna empresa_id (INTEGER nullable, SEM default,
+        # SEM NOT NULL) nas tabelas de dados. Idempotente e defensivo.
+        for tabela in ("clientes", "produtos", "conversas", "pedidos"):
+            _add_coluna(
+                engine,
+                tabela,
+                "empresa_id",
+                {
+                    "postgresql": "INTEGER",
+                    "sqlite": "INTEGER",
+                },
+            )
     except Exception:
         logger.exception("migrations: ensure_schema falhou (ignorado)")

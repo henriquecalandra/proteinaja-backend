@@ -40,6 +40,9 @@ logger = logging.getLogger("seed_demo")
 # Se este cliente existir, assumimos que o seed ja foi aplicado.
 MARKER_WHATSAPP = "5562991110001"
 
+# Whatsapp que marca a presenca do seed da 2a empresa (Boi Dourado).
+MARKER_WHATSAPP_EMPRESA2 = "5565992220001"
+
 # Cliente de teste de QA que deve ser removido junto com seus dados.
 QA_WHATSAPP = "5562988887777"
 
@@ -96,14 +99,21 @@ CATEGORIAS = {
 }
 
 
-def _seed_produtos(db: Session) -> None:
+def _seed_produtos(db: Session, empresa_id: int | None = None) -> None:
     """Popula o catalogo de produtos a partir de PRECOS, de forma idempotente.
 
-    Insere apenas os produtos que ainda nao existem (por nome). Roda tanto no
-    seed novo quanto no early-return, para popular catalogo em bancos ja semeados.
+    Insere apenas os produtos que ainda nao existem (por nome) NA EMPRESA dada.
+    Os produtos sao por empresa agora (multi-tenant), entao a checagem de
+    existencia e por (nome, empresa_id). Roda tanto no seed novo quanto no
+    early-return, para popular catalogo em bancos ja semeados.
     """
     try:
-        existentes = {nome for (nome,) in db.query(Produto.nome).all()}
+        existentes = {
+            nome
+            for (nome,) in db.query(Produto.nome)
+            .filter(Produto.empresa_id == empresa_id)
+            .all()
+        }
         novos = 0
         for nome, preco in PRECOS.items():
             if nome in existentes:
@@ -113,6 +123,7 @@ def _seed_produtos(db: Session) -> None:
                     nome=nome,
                     categoria=CATEGORIAS.get(nome),
                     preco_kg=preco,
+                    empresa_id=empresa_id,
                     ativo=True,
                 )
             )
@@ -287,8 +298,53 @@ EMPRESAS_DEMO = [
 ]
 
 
-def _seed_multitenant(db: Session) -> None:
-    """Cria empresas, usuario admin e vincula o marcos. Idempotente e defensivo."""
+EMPRESA_SECUNDARIA_NOME = "Frigorifico Boi Dourado"
+
+
+def _empresa_principal_id(db: Session) -> int | None:
+    """Retorna o id da empresa principal (Sao Lucas), se existir."""
+    principal = (
+        db.query(Empresa).filter(Empresa.nome == EMPRESA_PRINCIPAL_NOME).first()
+    )
+    return principal.id if principal else None
+
+
+def _backfill_empresa_principal(db: Session, empresa_id: int) -> None:
+    """Atribui empresa_id da principal aos dados legados (empresa_id IS NULL).
+
+    Idempotente: so afeta linhas com empresa_id NULL. Cobre clientes, produtos,
+    conversas e pedidos. Defensivo: nunca derruba o startup.
+    """
+    if not empresa_id:
+        return
+    try:
+        total = 0
+        for Model in (Cliente, Produto, Conversa, Pedido):
+            total += (
+                db.query(Model)
+                .filter(Model.empresa_id.is_(None))
+                .update({Model.empresa_id: empresa_id}, synchronize_session=False)
+            )
+        if total:
+            db.commit()
+            logger.info(
+                "seed_demo: backfill empresa_id=%s em %d linhas legadas",
+                empresa_id,
+                total,
+            )
+    except Exception:
+        logger.exception("seed_demo: falha no backfill de empresa_id (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+def _seed_multitenant(db: Session) -> int | None:
+    """Cria empresas, usuario admin e vincula o marcos. Idempotente e defensivo.
+
+    Retorna o id da empresa principal (Sao Lucas) ou None em caso de falha.
+    """
     try:
         from app.services.auth import hash_senha
 
@@ -353,13 +409,46 @@ def _seed_multitenant(db: Session) -> None:
             )
             db.commit()
 
+        # 5) Usuario da 2a empresa (joao@boidourado.com) vinculado a Boi Dourado.
+        secundaria = (
+            db.query(Empresa)
+            .filter(Empresa.nome == EMPRESA_SECUNDARIA_NOME)
+            .first()
+        )
+        if secundaria:
+            joao = (
+                db.query(Usuario)
+                .filter(Usuario.email == "joao@boidourado.com")
+                .first()
+            )
+            if not joao:
+                db.add(
+                    Usuario(
+                        nome="Joao Boi Dourado",
+                        email="joao@boidourado.com",
+                        senha_hash=hash_senha("senha123"),
+                        role="empresa",
+                        empresa_id=secundaria.id,
+                    )
+                )
+            else:
+                db.query(Usuario).filter(
+                    Usuario.email == "joao@boidourado.com"
+                ).update(
+                    {Usuario.role: "empresa", Usuario.empresa_id: secundaria.id},
+                    synchronize_session=False,
+                )
+            db.commit()
+
         logger.info("seed_demo: camada multi-tenant garantida")
+        return principal.id if principal else None
     except Exception:
         logger.exception("seed_demo: falha ao semear multi-tenant (ignorado)")
         try:
             db.rollback()
         except Exception:
             pass
+        return None
 
 
 def _add_mensagens(db: Session, conversa: Conversa, dialogo, base_dt: datetime) -> None:
@@ -376,6 +465,129 @@ def _add_mensagens(db: Session, conversa: Conversa, dialogo, base_dt: datetime) 
         )
 
 
+# Clientes proprios da 2a empresa (Boi Dourado). (nome, cnpj, whatsapp, tipo, cidade)
+CLIENTES_EMPRESA2 = [
+    ("Acougue do Cuiaba", "13.131.313/0001-13", MARKER_WHATSAPP_EMPRESA2, ClienteTipo.acougue, "Cuiaba"),
+    ("Restaurante Pantanal", "14.141.414/0001-14", "5565992220002", ClienteTipo.restaurante, "Cuiaba"),
+    ("Mercado Bom Preco MT", "15.151.515/0001-15", "5565992220003", ClienteTipo.mercadinho, "Varzea Grande"),
+]
+
+
+def _seed_empresa2(db: Session, empresa_id: int) -> None:
+    """Cria dados PROPRIOS da 2a empresa (Boi Dourado). Idempotente e defensivo.
+
+    Cria ~3 clientes, ~5 produtos, ~4 pedidos (alguns hoje) e 2 conversas com
+    mensagens, TODOS com empresa_id da 2a empresa. Idempotente via cliente
+    marcador (MARKER_WHATSAPP_EMPRESA2).
+    """
+    if not empresa_id:
+        return
+    try:
+        # Produtos proprios da empresa 2 (~5). Idempotente por (nome, empresa_id).
+        prod_empresa2 = ["Picanha", "Costela bovina", "Fraldinha", "Frango inteiro", "Carne moida"]
+        existentes_p = {
+            nome
+            for (nome,) in db.query(Produto.nome)
+            .filter(Produto.empresa_id == empresa_id)
+            .all()
+        }
+        for nome in prod_empresa2:
+            if nome in existentes_p:
+                continue
+            db.add(
+                Produto(
+                    nome=nome,
+                    categoria=CATEGORIAS.get(nome),
+                    preco_kg=PRECOS[nome],
+                    empresa_id=empresa_id,
+                    ativo=True,
+                )
+            )
+        db.commit()
+
+        # Idempotencia dos dados transacionais: cliente marcador da empresa 2.
+        if db.query(Cliente).filter(Cliente.whatsapp == MARKER_WHATSAPP_EMPRESA2).first():
+            logger.info("seed_demo: dados da 2a empresa ja existem")
+            return
+
+        # Clientes (~3).
+        clientes2: list[Cliente] = []
+        for nome, cnpj, whats, tipo, cidade in CLIENTES_EMPRESA2:
+            c = Cliente(
+                nome=nome,
+                cnpj=cnpj,
+                whatsapp=whats,
+                tipo=tipo,
+                cidade=cidade,
+                empresa_id=empresa_id,
+                ativo=True,
+                created_at=_dias_atras(15),
+            )
+            db.add(c)
+            clientes2.append(c)
+        db.flush()
+
+        # Conversas (2) com mensagens.
+        convs2: list[Conversa] = []
+        spec_conv = [
+            (0, DIALOGO_PEDIDO_IA, ConversaStatus.agente, _hoje_em(10, 0)),
+            (1, DIALOGO_NEGOCIANDO, ConversaStatus.humano, _hoje_em(14, 0)),
+        ]
+        for idx, dialogo, statusc, dt in spec_conv:
+            conv = Conversa(
+                cliente_id=clientes2[idx].id,
+                empresa_id=empresa_id,
+                status=statusc,
+                created_at=dt,
+                updated_at=dt + timedelta(minutes=20),
+            )
+            db.add(conv)
+            db.flush()
+            _add_mensagens(db, conv, dialogo, dt)
+            convs2.append(conv)
+
+        # Pedidos (~4), alguns hoje.
+        ij = _itens
+        i_a, v_a = ij(("Picanha", 10), ("Fraldinha", 8))
+        i_b, v_b = ij(("Costela bovina", 20))
+        i_c, v_c = ij(("Frango inteiro", 25))
+        i_d, v_d = ij(("Carne moida", 18))
+        spec_ped = [
+            (0, i_a, v_a, PedidoOrigem.ia, PedidoStatus.confirmado, _hoje_em(10, 30)),
+            (0, i_c, v_c, PedidoOrigem.ia, PedidoStatus.confirmado, _hoje_em(11, 0)),
+            (1, i_b, v_b, PedidoOrigem.humano, PedidoStatus.aguardando, _hoje_em(14, 30)),
+            (1, i_d, v_d, PedidoOrigem.ia, PedidoStatus.entregue, _dias_atras(3, 12)),
+        ]
+        for conv_idx, itens_json, valor, origem, statusp, dt in spec_ped:
+            conv = convs2[conv_idx]
+            db.add(
+                Pedido(
+                    conversa_id=conv.id,
+                    cliente_id=conv.cliente_id,
+                    empresa_id=empresa_id,
+                    itens_json=itens_json,
+                    valor_total=valor,
+                    origem=origem,
+                    status=statusp,
+                    created_at=dt,
+                )
+            )
+        db.commit()
+        logger.info(
+            "seed_demo: 2a empresa (id=%s) semeada: %d clientes, %d conversas, %d pedidos",
+            empresa_id,
+            len(clientes2),
+            len(convs2),
+            len(spec_ped),
+        )
+    except Exception:
+        logger.exception("seed_demo: falha ao semear 2a empresa (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def seed_demo(db: Session) -> None:
     """Popula o banco com dados de demonstracao. Idempotente e defensivo."""
     try:
@@ -386,8 +598,21 @@ def seed_demo(db: Session) -> None:
         #    Mas a marcacao de clientes manuais roda SEMPRE (idempotente).
         if db.query(Cliente).filter(Cliente.whatsapp == MARKER_WHATSAPP).first():
             _marcar_clientes_manuais(db)
-            _seed_produtos(db)
-            _seed_multitenant(db)
+            # Camada multi-tenant primeiro: garante empresas/usuarios e nos da o
+            # id da empresa principal para backfill e catalogo.
+            principal_id = _seed_multitenant(db)
+            if principal_id:
+                _backfill_empresa_principal(db, principal_id)
+                _seed_produtos(db, principal_id)
+                secundaria = (
+                    db.query(Empresa)
+                    .filter(Empresa.nome == EMPRESA_SECUNDARIA_NOME)
+                    .first()
+                )
+                if secundaria:
+                    _seed_empresa2(db, secundaria.id)
+            else:
+                _seed_produtos(db)
             logger.info("seed_demo: dados de demo ja existem, catalogo garantido")
             return
 
@@ -502,11 +727,23 @@ def seed_demo(db: Session) -> None:
         # 6) Marca alguns clientes como atendimento manual (idempotente).
         _marcar_clientes_manuais(db)
 
-        # 7) Popula o catalogo de produtos (idempotente).
-        _seed_produtos(db)
+        # 7) Camada multi-tenant (empresas, admin, vinculo do marcos e joao).
+        principal_id = _seed_multitenant(db)
 
-        # 8) Camada multi-tenant (empresas, admin, vinculo do marcos).
-        _seed_multitenant(db)
+        # 8) Backfill: dados recem-criados (empresa_id NULL) viram da principal,
+        #    catalogo da principal e dados proprios da 2a empresa.
+        if principal_id:
+            _backfill_empresa_principal(db, principal_id)
+            _seed_produtos(db, principal_id)
+            secundaria = (
+                db.query(Empresa)
+                .filter(Empresa.nome == EMPRESA_SECUNDARIA_NOME)
+                .first()
+            )
+            if secundaria:
+                _seed_empresa2(db, secundaria.id)
+        else:
+            _seed_produtos(db)
 
         logger.info(
             "seed_demo: %d clientes, %d conversas, %d pedidos criados",

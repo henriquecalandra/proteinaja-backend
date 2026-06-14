@@ -2,15 +2,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Cliente, Pedido, Conversa
+from app.models import Cliente, Pedido, Conversa, Usuario
 from app.schemas import ClienteSchema, ClienteCreate, ClienteUpdate, ClienteDetalhe
-from app.routers.auth import get_current_user
+from app.routers.auth import get_usuario_atual
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
+
+def _is_admin(usuario: Usuario) -> bool:
+    return usuario.role == "admin"
+
+
 @router.get("/", response_model=list[ClienteSchema])
-def listar_clientes(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    clientes = db.query(Cliente).order_by(Cliente.nome).all()
+def listar_clientes(db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    query = db.query(Cliente)
+    if not _is_admin(usuario):
+        query = query.filter(Cliente.empresa_id == usuario.empresa_id)
+    clientes = query.order_by(Cliente.nome).all()
     resultado = []
     for cliente in clientes:
         total_pedidos = db.query(func.count(Pedido.id))\
@@ -24,7 +32,7 @@ def listar_clientes(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return resultado
 
 @router.post("/", response_model=ClienteSchema, status_code=201)
-def criar_cliente(body: ClienteCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def criar_cliente(body: ClienteCreate, db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
     if db.query(Cliente).filter(Cliente.whatsapp == body.whatsapp).first():
         raise HTTPException(status_code=409, detail="WhatsApp ja cadastrado")
     cliente = Cliente(
@@ -34,6 +42,7 @@ def criar_cliente(body: ClienteCreate, db: Session = Depends(get_db), _=Depends(
         cnpj=body.cnpj,
         cidade=body.cidade,
         atendido_por_ia=body.atendido_por_ia,
+        empresa_id=usuario.empresa_id,
     )
     db.add(cliente)
     db.commit()
@@ -42,8 +51,11 @@ def criar_cliente(body: ClienteCreate, db: Session = Depends(get_db), _=Depends(
 
 @router.patch("/{cliente_id}", response_model=ClienteSchema)
 def atualizar_cliente(cliente_id: int, body: ClienteUpdate,
-                      db: Session = Depends(get_db), _=Depends(get_current_user)):
-    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+                      db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    query = db.query(Cliente).filter(Cliente.id == cliente_id)
+    if not _is_admin(usuario):
+        query = query.filter(Cliente.empresa_id == usuario.empresa_id)
+    cliente = query.first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado")
     dados = body.model_dump(exclude_unset=True)
@@ -61,8 +73,11 @@ def atualizar_cliente(cliente_id: int, body: ClienteUpdate,
     return schema
 
 @router.get("/{cliente_id}", response_model=ClienteDetalhe)
-def detalhe_cliente(cliente_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+def detalhe_cliente(cliente_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    query = db.query(Cliente).filter(Cliente.id == cliente_id)
+    if not _is_admin(usuario):
+        query = query.filter(Cliente.empresa_id == usuario.empresa_id)
+    cliente = query.first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado")
     total_pedidos = db.query(func.count(Pedido.id))\

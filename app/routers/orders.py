@@ -4,13 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Pedido, PedidoStatus, PedidoOrigem, Cliente, Conversa, ConversaStatus
+from app.models import Pedido, PedidoStatus, PedidoOrigem, Cliente, Conversa, ConversaStatus, Usuario
 from app.schemas import PedidoSchema, PedidoCreate
-from app.routers.auth import get_current_user
+from app.routers.auth import get_usuario_atual
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 METODOS_PAGAMENTO_VALIDOS = ("pix", "boleto")
+
+
+def _is_admin(usuario: Usuario) -> bool:
+    return usuario.role == "admin"
+
+
+def _pedido_do_usuario(db: Session, pedido_id: int, usuario: Usuario) -> Pedido | None:
+    query = db.query(Pedido).filter(Pedido.id == pedido_id)
+    if not _is_admin(usuario):
+        query = query.filter(Pedido.empresa_id == usuario.empresa_id)
+    return query.first()
 
 
 class AtualizarStatusRequest(BaseModel):
@@ -22,12 +33,18 @@ class PagamentoRequest(BaseModel):
 
 
 @router.get("/", response_model=list[PedidoSchema])
-def listar_pedidos(limit: int = 50, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(Pedido).order_by(Pedido.created_at.desc()).limit(limit).all()
+def listar_pedidos(limit: int = 50, db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    query = db.query(Pedido)
+    if not _is_admin(usuario):
+        query = query.filter(Pedido.empresa_id == usuario.empresa_id)
+    return query.order_by(Pedido.created_at.desc()).limit(limit).all()
 
 @router.post("/", response_model=PedidoSchema, status_code=201)
-def criar_pedido(body: PedidoCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    cliente = db.query(Cliente).filter(Cliente.id == body.cliente_id).first()
+def criar_pedido(body: PedidoCreate, db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    query = db.query(Cliente).filter(Cliente.id == body.cliente_id)
+    if not _is_admin(usuario):
+        query = query.filter(Cliente.empresa_id == usuario.empresa_id)
+    cliente = query.first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado")
 
@@ -36,6 +53,9 @@ def criar_pedido(body: PedidoCreate, db: Session = Depends(get_db), _=Depends(ge
         for item in body.itens
     ]
     valor_total = sum(item.qtd_kg * item.preco_kg for item in body.itens)
+
+    # empresa do pedido: para admin, herda do cliente; senao, a do usuario.
+    empresa_id = cliente.empresa_id if _is_admin(usuario) else usuario.empresa_id
 
     # Pedido.conversa_id e NOT NULL: reusa a conversa mais recente do cliente
     # ou cria uma nova conversa para ele.
@@ -46,7 +66,7 @@ def criar_pedido(body: PedidoCreate, db: Session = Depends(get_db), _=Depends(ge
         .first()
     )
     if not conversa:
-        conversa = Conversa(cliente_id=cliente.id, status=ConversaStatus.humano)
+        conversa = Conversa(cliente_id=cliente.id, status=ConversaStatus.humano, empresa_id=empresa_id)
         db.add(conversa)
         db.commit()
         db.refresh(conversa)
@@ -54,6 +74,7 @@ def criar_pedido(body: PedidoCreate, db: Session = Depends(get_db), _=Depends(ge
     pedido = Pedido(
         conversa_id=conversa.id,
         cliente_id=cliente.id,
+        empresa_id=empresa_id,
         itens_json=json.dumps(itens, ensure_ascii=False),
         valor_total=valor_total,
         origem=PedidoOrigem.humano,
@@ -66,8 +87,8 @@ def criar_pedido(body: PedidoCreate, db: Session = Depends(get_db), _=Depends(ge
 
 @router.patch("/{pedido_id}", response_model=PedidoSchema)
 def atualizar_status(pedido_id: int, body: AtualizarStatusRequest,
-                     db: Session = Depends(get_db), _=Depends(get_current_user)):
-    pedido = db.query(Pedido).filter(Pedido.id == pedido_id).first()
+                     db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    pedido = _pedido_do_usuario(db, pedido_id, usuario)
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido nao encontrado")
     try:
@@ -82,8 +103,8 @@ def atualizar_status(pedido_id: int, body: AtualizarStatusRequest,
 
 @router.post("/{pedido_id}/payment", response_model=PedidoSchema)
 def gerar_pagamento(pedido_id: int, body: PagamentoRequest,
-                    db: Session = Depends(get_db), _=Depends(get_current_user)):
-    pedido = db.query(Pedido).filter(Pedido.id == pedido_id).first()
+                    db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    pedido = _pedido_do_usuario(db, pedido_id, usuario)
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido nao encontrado")
 
@@ -110,8 +131,8 @@ def gerar_pagamento(pedido_id: int, body: PagamentoRequest,
 
 
 @router.post("/{pedido_id}/pay", response_model=PedidoSchema)
-def marcar_pago(pedido_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    pedido = db.query(Pedido).filter(Pedido.id == pedido_id).first()
+def marcar_pago(pedido_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    pedido = _pedido_do_usuario(db, pedido_id, usuario)
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido nao encontrado")
     pedido.pago = True

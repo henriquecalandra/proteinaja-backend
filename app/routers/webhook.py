@@ -7,6 +7,7 @@ from app.models import (
     Mensagem,
     Pedido,
     Produto,
+    Empresa,
     ConversaStatus,
     ClienteTipo,
     PedidoOrigem,
@@ -22,16 +23,31 @@ logger = logging.getLogger("webhook")
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
-def obter_ou_criar_cliente(db: Session, numero: str, nome: str) -> Cliente:
+# Nome da empresa principal (WhatsApp simulado, sem roteamento por instancia).
+EMPRESA_PRINCIPAL_NOME = "Frigorifico Sao Lucas"
+
+
+def _empresa_principal_id(db: Session) -> int | None:
+    """Resolve o id da empresa principal (Sao Lucas). Defensivo: None se falhar."""
+    try:
+        empresa = (
+            db.query(Empresa).filter(Empresa.nome == EMPRESA_PRINCIPAL_NOME).first()
+        )
+        return empresa.id if empresa else None
+    except Exception:
+        return None
+
+
+def obter_ou_criar_cliente(db: Session, numero: str, nome: str, empresa_id: int | None = None) -> Cliente:
     cliente = db.query(Cliente).filter(Cliente.whatsapp == numero).first()
     if not cliente:
-        cliente = Cliente(nome=nome or numero, whatsapp=numero, tipo=ClienteTipo.acougue)
+        cliente = Cliente(nome=nome or numero, whatsapp=numero, tipo=ClienteTipo.acougue, empresa_id=empresa_id)
         db.add(cliente)
         db.commit()
         db.refresh(cliente)
     return cliente
 
-def obter_ou_criar_conversa(db: Session, cliente_id: int) -> Conversa:
+def obter_ou_criar_conversa(db: Session, cliente_id: int, empresa_id: int | None = None) -> Conversa:
     conversa = (
         db.query(Conversa)
         .filter(Conversa.cliente_id == cliente_id, Conversa.status != ConversaStatus.encerrada)
@@ -39,7 +55,7 @@ def obter_ou_criar_conversa(db: Session, cliente_id: int) -> Conversa:
         .first()
     )
     if not conversa:
-        conversa = Conversa(cliente_id=cliente_id)
+        conversa = Conversa(cliente_id=cliente_id, empresa_id=empresa_id)
         db.add(conversa)
         db.commit()
         db.refresh(conversa)
@@ -66,8 +82,9 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
     if not numero or not texto:
         return {"ok": True}
 
-    cliente = obter_ou_criar_cliente(db, numero, nome_push)
-    conversa = obter_ou_criar_conversa(db, cliente.id)
+    empresa_id = _empresa_principal_id(db)
+    cliente = obter_ou_criar_cliente(db, numero, nome_push, empresa_id)
+    conversa = obter_ou_criar_conversa(db, cliente.id, empresa_id)
 
     if conversa.status == ConversaStatus.humano:
         msg = Mensagem(conversa_id=conversa.id, origem="cliente", texto=texto)
@@ -93,9 +110,12 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
     # Consulta os produtos ativos para passar a tabela de precos real ao agente.
     # Defensivo: se a tabela estiver vazia ou falhar, o agente usa o catalogo padrao.
     try:
+        produtos_q = db.query(Produto).filter(Produto.ativo.is_(True))
+        if empresa_id is not None:
+            produtos_q = produtos_q.filter(Produto.empresa_id == empresa_id)
         produtos = [
             (p.nome, p.preco_kg)
-            for p in db.query(Produto).filter(Produto.ativo.is_(True)).order_by(Produto.nome).all()
+            for p in produtos_q.order_by(Produto.nome).all()
         ]
     except Exception:
         produtos = None
@@ -118,9 +138,12 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
         itens_extraidos = extrair_pedido(historico, texto, produtos=produtos)
         if itens_extraidos:
             # Mapa nome (lower) -> Produto ativo do catalogo, para obter preco_kg.
+            catalogo_q = db.query(Produto).filter(Produto.ativo.is_(True))
+            if empresa_id is not None:
+                catalogo_q = catalogo_q.filter(Produto.empresa_id == empresa_id)
             catalogo = {
                 p.nome.lower(): p
-                for p in db.query(Produto).filter(Produto.ativo.is_(True)).all()
+                for p in catalogo_q.all()
             }
             itens_pedido = []
             valor_total = 0.0
@@ -144,6 +167,7 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
                 pedido = Pedido(
                     conversa_id=conversa.id,
                     cliente_id=cliente.id,
+                    empresa_id=empresa_id,
                     itens_json=json.dumps(itens_pedido, ensure_ascii=False),
                     valor_total=valor_total,
                     origem=PedidoOrigem.ia,

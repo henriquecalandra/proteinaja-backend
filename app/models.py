@@ -33,6 +33,7 @@ class Cliente(Base):
     whatsapp: Mapped[str] = mapped_column(String(20), unique=True)
     tipo: Mapped[ClienteTipo] = mapped_column(Enum(ClienteTipo))
     cidade: Mapped[str | None] = mapped_column(String(100))
+    empresa_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ativo: Mapped[bool] = mapped_column(default=True)
     atendido_por_ia: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -42,6 +43,7 @@ class Conversa(Base):
     __tablename__ = "conversas"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"))
+    empresa_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[ConversaStatus] = mapped_column(Enum(ConversaStatus), default=ConversaStatus.agente)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -67,6 +69,7 @@ class Pedido(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     conversa_id: Mapped[int] = mapped_column(ForeignKey("conversas.id"))
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"))
+    empresa_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     itens_json: Mapped[str] = mapped_column(Text)
     valor_total: Mapped[float] = mapped_column(Float)
     origem: Mapped[PedidoOrigem] = mapped_column(Enum(PedidoOrigem))
@@ -109,8 +112,9 @@ class Usuario(Base):
 class Produto(Base):
     __tablename__ = "produtos"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    nome: Mapped[str] = mapped_column(String(200), unique=True)
+    nome: Mapped[str] = mapped_column(String(200))
     categoria: Mapped[str | None] = mapped_column(String(80))
     preco_kg: Mapped[float] = mapped_column(Float)
+    empresa_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
