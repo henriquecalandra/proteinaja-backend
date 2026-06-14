@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Cliente, Conversa, Mensagem, ConversaStatus, ClienteTipo
+from app.models import Cliente, Conversa, Mensagem, Produto, ConversaStatus, ClienteTipo
 from app.services.agent import gerar_resposta, deve_escalar_para_humano
 from app.services.whatsapp import enviar_mensagem
 import asyncio
@@ -75,7 +75,18 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     historico = db.query(Mensagem).filter(Mensagem.conversa_id == conversa.id).all()
-    resposta = gerar_resposta(texto, historico[:-1], cliente)
+
+    # Consulta os produtos ativos para passar a tabela de precos real ao agente.
+    # Defensivo: se a tabela estiver vazia ou falhar, o agente usa o catalogo padrao.
+    try:
+        produtos = [
+            (p.nome, p.preco_kg)
+            for p in db.query(Produto).filter(Produto.ativo.is_(True)).order_by(Produto.nome).all()
+        ]
+    except Exception:
+        produtos = None
+
+    resposta = gerar_resposta(texto, historico[:-1], cliente, produtos=produtos)
 
     if deve_escalar_para_humano(resposta):
         conversa.status = ConversaStatus.humano

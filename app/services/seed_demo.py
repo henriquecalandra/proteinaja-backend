@@ -25,6 +25,7 @@ from app.models import (
     Conversa,
     Mensagem,
     Pedido,
+    Produto,
     ClienteTipo,
     ConversaStatus,
     PedidoStatus,
@@ -67,6 +68,62 @@ PRECOS = {
     "Costela suina": 27.90,
     "Carne moida": 29.90,
 }
+
+# Categoria de cada produto do catalogo (para o catalogo de produtos).
+CATEGORIAS = {
+    "Picanha": "Bovino",
+    "Alcatra": "Bovino",
+    "Costela bovina": "Bovino",
+    "Coxao mole": "Bovino",
+    "Coxao duro": "Bovino",
+    "Patinho": "Bovino",
+    "Acem": "Bovino",
+    "Fraldinha": "Bovino",
+    "Maminha": "Bovino",
+    "File mignon": "Bovino",
+    "Contra file": "Bovino",
+    "Cupim": "Bovino",
+    "Carne moida": "Bovino",
+    "Pernil suino": "Suino",
+    "Costela suina": "Suino",
+    "Frango inteiro": "Aves",
+    "Peito de frango": "Aves",
+    "Coxa e sobrecoxa": "Aves",
+    "Linguica toscana": "Embutidos",
+    "Linguica calabresa": "Embutidos",
+}
+
+
+def _seed_produtos(db: Session) -> None:
+    """Popula o catalogo de produtos a partir de PRECOS, de forma idempotente.
+
+    Insere apenas os produtos que ainda nao existem (por nome). Roda tanto no
+    seed novo quanto no early-return, para popular catalogo em bancos ja semeados.
+    """
+    try:
+        existentes = {nome for (nome,) in db.query(Produto.nome).all()}
+        novos = 0
+        for nome, preco in PRECOS.items():
+            if nome in existentes:
+                continue
+            db.add(
+                Produto(
+                    nome=nome,
+                    categoria=CATEGORIAS.get(nome),
+                    preco_kg=preco,
+                    ativo=True,
+                )
+            )
+            novos += 1
+        if novos:
+            db.commit()
+            logger.info("seed_demo: %d produtos criados no catalogo", novos)
+    except Exception:
+        logger.exception("seed_demo: falha ao popular catalogo de produtos (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 def _itens(*pares):
@@ -239,7 +296,8 @@ def seed_demo(db: Session) -> None:
         #    Mas a marcacao de clientes manuais roda SEMPRE (idempotente).
         if db.query(Cliente).filter(Cliente.whatsapp == MARKER_WHATSAPP).first():
             _marcar_clientes_manuais(db)
-            logger.info("seed_demo: dados de demo ja existem, nada a fazer")
+            _seed_produtos(db)
+            logger.info("seed_demo: dados de demo ja existem, catalogo garantido")
             return
 
         random.seed(42)  # reprodutibilidade
@@ -352,6 +410,9 @@ def seed_demo(db: Session) -> None:
 
         # 6) Marca alguns clientes como atendimento manual (idempotente).
         _marcar_clientes_manuais(db)
+
+        # 7) Popula o catalogo de produtos (idempotente).
+        _seed_produtos(db)
 
         logger.info(
             "seed_demo: %d clientes, %d conversas, %d pedidos criados",

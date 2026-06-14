@@ -29,11 +29,17 @@ def montar_historico(mensagens: list[Mensagem]) -> list[dict]:
             historico.append({"role": "assistant", "content": msg.texto})
     return historico
 
-def gerar_resposta(mensagem_cliente: str, historico: list[Mensagem], cliente: Cliente) -> str:
+def gerar_resposta(mensagem_cliente: str, historico: list[Mensagem], cliente: Cliente, produtos=None) -> str:
     tipo_label = {
         "acougue": "açougue", "restaurante": "restaurante",
         "mercadinho": "mercadinho", "food_service": "food service",
     }.get(cliente.tipo.value, "estabelecimento")
+
+    if produtos:
+        tabela = "; ".join(f"{nome} {float(preco):.2f}" for nome, preco in produtos)
+        catalogo = f"Tabela de preços atual (R$/kg): {tabela}.\nPrazo de entrega padrão: 2 dias úteis após confirmação.\nFormas de pagamento: boleto (30 dias) ou PIX (à vista com 2% desconto)."
+    else:
+        catalogo = CATALOGO
 
     system_prompt = f"""Você é o assistente comercial do {settings.frigorifico_nome}, frigorífico localizado em {settings.frigorifico_cidade}.
 
@@ -41,7 +47,7 @@ Você atende via WhatsApp compradores B2B — açougues, restaurantes e mercadin
 
 Cliente atual: {cliente.nome} ({tipo_label}, {cliente.cidade or 'localização não informada'})
 
-{CATALOGO}
+{catalogo}
 
 Regras:
 - Responda sempre em português informal e direto, como um atendente humano faria no WhatsApp

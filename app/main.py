@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
-from app.routers import auth, webhook, dashboard, clients, orders, conversations
+from app.routers import auth, webhook, dashboard, clients, orders, conversations, products
 
 app = FastAPI(title="ProteínaJá API", version="1.0.0")
 
@@ -45,6 +45,7 @@ app.include_router(dashboard.router)
 app.include_router(clients.router)
 app.include_router(orders.router)
 app.include_router(conversations.router)
+app.include_router(products.router)
 
 @app.get("/health")
 def health():

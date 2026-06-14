@@ -86,3 +86,12 @@ class Usuario(Base):
     email: Mapped[str] = mapped_column(String(200), unique=True)
     senha_hash: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class Produto(Base):
+    __tablename__ = "produtos"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nome: Mapped[str] = mapped_column(String(200), unique=True)
+    categoria: Mapped[str | None] = mapped_column(String(80))
+    preco_kg: Mapped[float] = mapped_column(Float)
+    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

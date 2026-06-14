@@ -89,3 +89,24 @@ class PedidoCreate(BaseModel):
     cliente_id: int
     itens: list[ItemPedidoIn]
     status: PedidoStatus = PedidoStatus.aguardando
+
+class ProdutoSchema(BaseModel):
+    id: int
+    nome: str
+    categoria: str | None
+    preco_kg: float
+    ativo: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class ProdutoCreate(BaseModel):
+    nome: str
+    preco_kg: float
+    categoria: str | None = None
+    ativo: bool = True
+
+class ProdutoUpdate(BaseModel):
+    nome: str | None = None
+    preco_kg: float | None = None
+    categoria: str | None = None
+    ativo: bool | None = None
