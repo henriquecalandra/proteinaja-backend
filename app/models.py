@@ -82,12 +82,28 @@ class Pedido(Base):
     def cliente_nome(self) -> str:
         return self.cliente.nome
 
+class Empresa(Base):
+    __tablename__ = "empresas"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nome: Mapped[str] = mapped_column(String(200))
+    cnpj: Mapped[str | None] = mapped_column(String(18), default=None)
+    cidade: Mapped[str | None] = mapped_column(String(100), default=None)
+    plano: Mapped[str] = mapped_column(String(20), nullable=False, default="starter")
+    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    whatsapp_numero: Mapped[str | None] = mapped_column(String(20), default=None)
+    evolution_url: Mapped[str | None] = mapped_column(Text, default=None)
+    evolution_instance: Mapped[str | None] = mapped_column(String(100), default=None)
+    whatsapp_conectado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 class Usuario(Base):
     __tablename__ = "usuarios"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nome: Mapped[str] = mapped_column(String(200))
     email: Mapped[str] = mapped_column(String(200), unique=True)
     senha_hash: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="empresa")
+    empresa_id: Mapped[int | None] = mapped_column(Integer, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 class Produto(Base):

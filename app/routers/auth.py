@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Usuario
-from app.schemas import LoginRequest, TokenResponse, RegisterRequest
+from app.schemas import LoginRequest, TokenResponse, RegisterRequest, UsuarioMe
 from app.services.auth import verificar_senha, criar_token, verificar_token, hash_senha
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -34,3 +34,12 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     if not usuario:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
     return usuario
+
+def require_admin(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    if usuario.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a administradores")
+    return usuario
+
+@router.get("/me", response_model=UsuarioMe)
+def me(usuario: Usuario = Depends(get_current_user)):
+    return UsuarioMe.model_validate(usuario)

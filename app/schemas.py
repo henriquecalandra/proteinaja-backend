@@ -118,3 +118,42 @@ class ProdutoUpdate(BaseModel):
     preco_kg: float | None = None
     categoria: str | None = None
     ativo: bool | None = None
+
+# ---- Multi-tenant: Empresa / Admin / Usuario ----
+
+class EmpresaSchema(BaseModel):
+    id: int
+    nome: str
+    cnpj: str | None = None
+    cidade: str | None = None
+    plano: str
+    ativo: bool
+    whatsapp_numero: str | None = None
+    evolution_url: str | None = None
+    evolution_instance: str | None = None
+    whatsapp_conectado: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class EmpresaUpdate(BaseModel):
+    nome: str | None = None
+    cnpj: str | None = None
+    cidade: str | None = None
+    whatsapp_numero: str | None = None
+    evolution_url: str | None = None
+    evolution_instance: str | None = None
+
+class AdminOverview(BaseModel):
+    total_empresas: int
+    empresas_ativas: int
+    total_pedidos_plataforma: int
+    gmv_plataforma: float
+    total_clientes: int
+
+class UsuarioMe(BaseModel):
+    id: int
+    nome: str
+    email: str
+    role: str
+    empresa_id: int | None = None
+    model_config = {"from_attributes": True}

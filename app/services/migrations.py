@@ -94,5 +94,24 @@ def ensure_schema(engine: Engine) -> None:
                 "sqlite": "TEXT",
             },
         )
+        # Multi-tenant: colunas em 'usuarios'.
+        _add_coluna(
+            engine,
+            "usuarios",
+            "role",
+            {
+                "postgresql": "VARCHAR(20) NOT NULL DEFAULT 'empresa'",
+                "sqlite": "VARCHAR(20) NOT NULL DEFAULT 'empresa'",
+            },
+        )
+        _add_coluna(
+            engine,
+            "usuarios",
+            "empresa_id",
+            {
+                "postgresql": "INTEGER",
+                "sqlite": "INTEGER",
+            },
+        )
     except Exception:
         logger.exception("migrations: ensure_schema falhou (ignorado)")

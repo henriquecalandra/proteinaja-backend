@@ -26,6 +26,8 @@ from app.models import (
     Mensagem,
     Pedido,
     Produto,
+    Empresa,
+    Usuario,
     ClienteTipo,
     ConversaStatus,
     PedidoStatus,
@@ -272,6 +274,94 @@ DIALOGO_SUINO_IA = [
 ]
 
 
+# Empresa principal (a do Frigorifico Sao Lucas, dono do marcos).
+EMPRESA_PRINCIPAL_NOME = "Frigorifico Sao Lucas"
+
+# Empresas de demonstracao (white-label). (nome, cnpj, cidade, plano, ativo)
+EMPRESAS_DEMO = [
+    ("Frigorifico Boi Dourado", "11.111.111/0001-11", "Cuiaba", "pro", True),
+    ("Frigorifico Vale Verde", "22.222.222/0001-22", "Uberlandia", "starter", True),
+    ("Frigorifico Pampa Sul", "33.333.333/0001-33", "Pelotas", "enterprise", True),
+    ("Frigorifico Serra Nevada", "44.444.444/0001-44", "Caxias do Sul", "starter", False),
+    ("Frigorifico Norte Carnes", "55.555.555/0001-55", "Maraba", "pro", True),
+]
+
+
+def _seed_multitenant(db: Session) -> None:
+    """Cria empresas, usuario admin e vincula o marcos. Idempotente e defensivo."""
+    try:
+        from app.services.auth import hash_senha
+
+        # 1) Empresa principal (idempotente por nome).
+        principal = (
+            db.query(Empresa)
+            .filter(Empresa.nome == EMPRESA_PRINCIPAL_NOME)
+            .first()
+        )
+        if not principal:
+            principal = Empresa(
+                nome=EMPRESA_PRINCIPAL_NOME,
+                cnpj="00.000.000/0001-00",
+                cidade="Goias",
+                plano="pro",
+                ativo=True,
+                whatsapp_numero="5562990001234",
+                whatsapp_conectado=False,
+            )
+            db.add(principal)
+            db.flush()
+
+        # 2) Empresas de demo (idempotente por nome).
+        for nome, cnpj, cidade, plano, ativo in EMPRESAS_DEMO:
+            if not db.query(Empresa).filter(Empresa.nome == nome).first():
+                db.add(
+                    Empresa(
+                        nome=nome,
+                        cnpj=cnpj,
+                        cidade=cidade,
+                        plano=plano,
+                        ativo=ativo,
+                        whatsapp_conectado=False,
+                    )
+                )
+
+        # 3) Usuario admin (idempotente por email).
+        admin = db.query(Usuario).filter(Usuario.email == "admin@proteinaja.com").first()
+        if not admin:
+            db.add(
+                Usuario(
+                    nome="Administrador ProteinaJa",
+                    email="admin@proteinaja.com",
+                    senha_hash=hash_senha("admin123"),
+                    role="admin",
+                    empresa_id=None,
+                )
+            )
+
+        db.commit()
+
+        # 4) Atualiza marcos: role='empresa', empresa_id = id da empresa principal.
+        principal = (
+            db.query(Empresa)
+            .filter(Empresa.nome == EMPRESA_PRINCIPAL_NOME)
+            .first()
+        )
+        if principal:
+            db.query(Usuario).filter(Usuario.email == "marcos@frigorifico.com").update(
+                {Usuario.role: "empresa", Usuario.empresa_id: principal.id},
+                synchronize_session=False,
+            )
+            db.commit()
+
+        logger.info("seed_demo: camada multi-tenant garantida")
+    except Exception:
+        logger.exception("seed_demo: falha ao semear multi-tenant (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def _add_mensagens(db: Session, conversa: Conversa, dialogo, base_dt: datetime) -> None:
     """Adiciona mensagens do dialogo espacadas em minutos a partir de base_dt."""
     for i, (origem, texto) in enumerate(dialogo):
@@ -297,6 +387,7 @@ def seed_demo(db: Session) -> None:
         if db.query(Cliente).filter(Cliente.whatsapp == MARKER_WHATSAPP).first():
             _marcar_clientes_manuais(db)
             _seed_produtos(db)
+            _seed_multitenant(db)
             logger.info("seed_demo: dados de demo ja existem, catalogo garantido")
             return
 
@@ -413,6 +504,9 @@ def seed_demo(db: Session) -> None:
 
         # 7) Popula o catalogo de produtos (idempotente).
         _seed_produtos(db)
+
+        # 8) Camada multi-tenant (empresas, admin, vinculo do marcos).
+        _seed_multitenant(db)
 
         logger.info(
             "seed_demo: %d clientes, %d conversas, %d pedidos criados",
