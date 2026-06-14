@@ -13,11 +13,14 @@ class TokenResponse(BaseModel):
 class ClienteSchema(BaseModel):
     id: int
     nome: str
+    cnpj: str | None
     whatsapp: str
     tipo: ClienteTipo
     cidade: str | None
     ativo: bool
     created_at: datetime
+    total_pedidos: int = 0
+    valor_total_comprado: float = 0.0
     model_config = {"from_attributes": True}
 
 class MensagemSchema(BaseModel):
@@ -30,6 +33,7 @@ class MensagemSchema(BaseModel):
 class ConversaSchema(BaseModel):
     id: int
     cliente_id: int
+    cliente_nome: str
     status: ConversaStatus
     updated_at: datetime
     model_config = {"from_attributes": True}
@@ -37,6 +41,7 @@ class ConversaSchema(BaseModel):
 class PedidoSchema(BaseModel):
     id: int
     cliente_id: int
+    cliente_nome: str
     itens_json: str
     valor_total: float
     origem: PedidoOrigem

@@ -48,6 +48,10 @@ class Conversa(Base):
     mensagens: Mapped[list["Mensagem"]] = relationship(back_populates="conversa", order_by="Mensagem.created_at")
     pedidos: Mapped[list["Pedido"]] = relationship(back_populates="conversa")
 
+    @property
+    def cliente_nome(self) -> str:
+        return self.cliente.nome
+
 class Mensagem(Base):
     __tablename__ = "mensagens"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -68,6 +72,11 @@ class Pedido(Base):
     status: Mapped[PedidoStatus] = mapped_column(Enum(PedidoStatus), default=PedidoStatus.aguardando)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     conversa: Mapped["Conversa"] = relationship(back_populates="pedidos")
+    cliente: Mapped["Cliente"] = relationship()
+
+    @property
+    def cliente_nome(self) -> str:
+        return self.cliente.nome
 
 class Usuario(Base):
     __tablename__ = "usuarios"
