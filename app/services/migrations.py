@@ -125,5 +125,30 @@ def ensure_schema(engine: Engine) -> None:
                     "sqlite": "INTEGER",
                 },
             )
+        # Remove a UNIQUE legada de produtos.nome (criada no Postgres antes do
+        # multi-tenant). Produtos agora sao por empresa -> o nome NAO e mais
+        # unico global. create_all/_add_coluna nao removem constraints; fazemos
+        # explicitamente. Defensivo e idempotente (IF EXISTS).
+        _drop_unique_produtos_nome(engine)
     except Exception:
         logger.exception("migrations: ensure_schema falhou (ignorado)")
+
+
+def _drop_unique_produtos_nome(engine: Engine) -> None:
+    """Remove constraint/indice UNIQUE de produtos.nome (Postgres). Nunca levanta."""
+    try:
+        if engine.dialect.name != "postgresql":
+            return  # SQLite local ja cria a tabela sem unique no model atual
+        insp = inspect(engine)
+        for uc in insp.get_unique_constraints("produtos"):
+            if uc.get("column_names") == ["nome"] and uc.get("name"):
+                with engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE produtos DROP CONSTRAINT IF EXISTS "{uc["name"]}"'))
+                logger.info("migrations: unique constraint %s removida de produtos.nome", uc["name"])
+        for ix in insp.get_indexes("produtos"):
+            if ix.get("unique") and ix.get("column_names") == ["nome"] and ix.get("name"):
+                with engine.begin() as conn:
+                    conn.execute(text(f'DROP INDEX IF EXISTS "{ix["name"]}"'))
+                logger.info("migrations: unique index %s removido de produtos.nome", ix["name"])
+    except Exception:
+        logger.exception("migrations: falha ao remover unique de produtos.nome (ignorado)")
