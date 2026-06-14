@@ -140,6 +140,53 @@ def ensure_schema(engine: Engine) -> None:
                 coluna,
                 {"postgresql": tipo, "sqlite": tipo},
             )
+        # Cadastro completo de produtos: 6 colunas novas em 'produtos'.
+        # Idempotente e defensivo (reusa _add_coluna).
+        _add_coluna(
+            engine,
+            "produtos",
+            "sku",
+            {"postgresql": "VARCHAR(60)", "sqlite": "VARCHAR(60)"},
+        )
+        _add_coluna(
+            engine,
+            "produtos",
+            "unidade",
+            {
+                "postgresql": "VARCHAR(8) NOT NULL DEFAULT 'kg'",
+                "sqlite": "VARCHAR(8) NOT NULL DEFAULT 'kg'",
+            },
+        )
+        _add_coluna(
+            engine,
+            "produtos",
+            "estoque",
+            {
+                "postgresql": "DOUBLE PRECISION NOT NULL DEFAULT 0",
+                "sqlite": "FLOAT NOT NULL DEFAULT 0",
+            },
+        )
+        _add_coluna(
+            engine,
+            "produtos",
+            "estoque_minimo",
+            {
+                "postgresql": "DOUBLE PRECISION NOT NULL DEFAULT 0",
+                "sqlite": "FLOAT NOT NULL DEFAULT 0",
+            },
+        )
+        _add_coluna(
+            engine,
+            "produtos",
+            "preco_custo",
+            {"postgresql": "DOUBLE PRECISION", "sqlite": "FLOAT"},
+        )
+        _add_coluna(
+            engine,
+            "produtos",
+            "descricao",
+            {"postgresql": "TEXT", "sqlite": "TEXT"},
+        )
         # Remove a UNIQUE legada de produtos.nome (criada no Postgres antes do
         # multi-tenant). Produtos agora sao por empresa -> o nome NAO e mais
         # unico global. create_all/_add_coluna nao removem constraints; fazemos

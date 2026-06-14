@@ -32,6 +32,12 @@ def criar_produto(body: ProdutoCreate, db: Session = Depends(get_db), usuario: U
         nome=body.nome,
         preco_kg=body.preco_kg,
         categoria=body.categoria,
+        sku=body.sku,
+        unidade=body.unidade,
+        estoque=body.estoque,
+        estoque_minimo=body.estoque_minimo,
+        preco_custo=body.preco_custo,
+        descricao=body.descricao,
         ativo=body.ativo,
         empresa_id=usuario.empresa_id,
     )

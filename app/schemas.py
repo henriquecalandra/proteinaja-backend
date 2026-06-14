@@ -104,6 +104,12 @@ class ProdutoSchema(BaseModel):
     nome: str
     categoria: str | None
     preco_kg: float
+    sku: str | None = None
+    unidade: str = "kg"
+    estoque: float = 0.0
+    estoque_minimo: float = 0.0
+    preco_custo: float | None = None
+    descricao: str | None = None
     ativo: bool
     created_at: datetime
     model_config = {"from_attributes": True}
@@ -112,12 +118,24 @@ class ProdutoCreate(BaseModel):
     nome: str
     preco_kg: float
     categoria: str | None = None
+    sku: str | None = None
+    unidade: str = "kg"
+    estoque: float = 0.0
+    estoque_minimo: float = 0.0
+    preco_custo: float | None = None
+    descricao: str | None = None
     ativo: bool = True
 
 class ProdutoUpdate(BaseModel):
     nome: str | None = None
     preco_kg: float | None = None
     categoria: str | None = None
+    sku: str | None = None
+    unidade: str | None = None
+    estoque: float | None = None
+    estoque_minimo: float | None = None
+    preco_custo: float | None = None
+    descricao: str | None = None
     ativo: bool | None = None
 
 # ---- Multi-tenant: Empresa / Admin / Usuario ----

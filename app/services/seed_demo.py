@@ -139,6 +139,77 @@ def _seed_produtos(db: Session, empresa_id: int | None = None) -> None:
             pass
 
 
+def _sku_para(nome: str, indice: int) -> str:
+    """Gera um SKU simples a partir das iniciais do nome + indice. Deterministico."""
+    iniciais = "".join(
+        palavra[0] for palavra in nome.split() if palavra
+    ).upper()[:4] or "PRD"
+    return f"SKU-{iniciais}-{indice:03d}"
+
+
+def _enriquecer_produtos(db: Session, empresa_id: int | None = None) -> None:
+    """Enriquece produtos existentes com os campos novos do cadastro.
+
+    Idempotente: so preenche onde os campos estao NULOS/ausentes (unidade,
+    sku, preco_custo, estoque, estoque_minimo). Deixa 2-3 produtos com estoque
+    ABAIXO do minimo para demonstrar o alerta de ruptura. Defensivo: nunca
+    derruba o app. Roda tanto no seed novo quanto no early-return.
+    """
+    try:
+        rng = random.Random(f"enriquecer-{empresa_id}")
+        produtos = (
+            db.query(Produto)
+            .filter(Produto.empresa_id == empresa_id)
+            .order_by(Produto.id)
+            .all()
+        )
+        if not produtos:
+            return
+        # Indices que ficarao com estoque abaixo do minimo (ruptura) — 2 a 3.
+        total = len(produtos)
+        n_baixos = min(3, max(2, total))
+        idx_baixos = set(range(min(n_baixos, total)))
+        alterados = 0
+        for i, p in enumerate(produtos):
+            mudou = False
+            if not getattr(p, "unidade", None):
+                p.unidade = "kg"
+                mudou = True
+            if not getattr(p, "sku", None):
+                p.sku = _sku_para(p.nome, i + 1)
+                mudou = True
+            if getattr(p, "preco_custo", None) is None and p.preco_kg:
+                p.preco_custo = round(p.preco_kg * 0.70, 2)
+                mudou = True
+            # estoque_minimo: define se ainda nao definido (0 ou None).
+            if not getattr(p, "estoque_minimo", None):
+                p.estoque_minimo = 30.0
+                mudou = True
+            # estoque: define se ainda nao definido (0 ou None).
+            if not getattr(p, "estoque", None):
+                if i in idx_baixos:
+                    # Abaixo do minimo, para demonstrar alerta de ruptura.
+                    p.estoque = float(rng.randint(0, 20))
+                else:
+                    p.estoque = float(rng.randint(40, 300))
+                mudou = True
+            if mudou:
+                alterados += 1
+        if alterados:
+            db.commit()
+            logger.info(
+                "seed_demo: %d produtos enriquecidos (empresa_id=%s)",
+                alterados,
+                empresa_id,
+            )
+    except Exception:
+        logger.exception("seed_demo: falha ao enriquecer produtos (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def _itens(*pares):
     """Monta lista de itens (produto, qtd_kg) -> dicts com preco_kg.
 
@@ -604,6 +675,7 @@ def seed_demo(db: Session) -> None:
             if principal_id:
                 _backfill_empresa_principal(db, principal_id)
                 _seed_produtos(db, principal_id)
+                _enriquecer_produtos(db, principal_id)
                 secundaria = (
                     db.query(Empresa)
                     .filter(Empresa.nome == EMPRESA_SECUNDARIA_NOME)
@@ -611,8 +683,10 @@ def seed_demo(db: Session) -> None:
                 )
                 if secundaria:
                     _seed_empresa2(db, secundaria.id)
+                    _enriquecer_produtos(db, secundaria.id)
             else:
                 _seed_produtos(db)
+                _enriquecer_produtos(db)
             logger.info("seed_demo: dados de demo ja existem, catalogo garantido")
             return
 
@@ -735,6 +809,7 @@ def seed_demo(db: Session) -> None:
         if principal_id:
             _backfill_empresa_principal(db, principal_id)
             _seed_produtos(db, principal_id)
+            _enriquecer_produtos(db, principal_id)
             secundaria = (
                 db.query(Empresa)
                 .filter(Empresa.nome == EMPRESA_SECUNDARIA_NOME)
@@ -742,8 +817,10 @@ def seed_demo(db: Session) -> None:
             )
             if secundaria:
                 _seed_empresa2(db, secundaria.id)
+                _enriquecer_produtos(db, secundaria.id)
         else:
             _seed_produtos(db)
+            _enriquecer_produtos(db)
 
         logger.info(
             "seed_demo: %d clientes, %d conversas, %d pedidos criados",
