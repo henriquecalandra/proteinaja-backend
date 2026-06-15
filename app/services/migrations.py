@@ -192,6 +192,39 @@ def ensure_schema(engine: Engine) -> None:
         # unico global. create_all/_add_coluna nao removem constraints; fazemos
         # explicitamente. Defensivo e idempotente (IF EXISTS).
         _drop_unique_produtos_nome(engine)
+        # Cadastro completo do cliente: 13 colunas novas em 'clientes'.
+        # Todas nullable, sem default. Idempotente e defensivo (reusa _add_coluna).
+        for coluna, tipo in (
+            ("email", "VARCHAR(200)"),
+            ("telefone", "VARCHAR(40)"),
+            ("razao_social", "VARCHAR(200)"),
+            ("inscricao_estadual", "VARCHAR(40)"),
+            ("endereco", "TEXT"),
+            ("bairro", "VARCHAR(100)"),
+            ("uf", "VARCHAR(2)"),
+            ("cep", "VARCHAR(15)"),
+            ("contato_nome", "VARCHAR(200)"),
+            ("condicao_pagamento", "VARCHAR(40)"),
+            ("observacoes", "TEXT"),
+        ):
+            _add_coluna(
+                engine,
+                "clientes",
+                coluna,
+                {"postgresql": tipo, "sqlite": tipo},
+            )
+        _add_coluna(
+            engine,
+            "clientes",
+            "limite_credito",
+            {"postgresql": "DOUBLE PRECISION", "sqlite": "FLOAT"},
+        )
+        _add_coluna(
+            engine,
+            "clientes",
+            "vendedor_id",
+            {"postgresql": "INTEGER", "sqlite": "INTEGER"},
+        )
     except Exception:
         logger.exception("migrations: ensure_schema falhou (ignorado)")
 

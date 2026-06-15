@@ -28,6 +28,7 @@ from app.models import (
     Produto,
     Empresa,
     Usuario,
+    Vendedor,
     ClienteTipo,
     ConversaStatus,
     PedidoStatus,
@@ -659,6 +660,125 @@ def _seed_empresa2(db: Session, empresa_id: int) -> None:
             pass
 
 
+# Vendedores por empresa. (nome, email, telefone, meta_mensal)
+VENDEDORES_PRINCIPAL = [
+    ("Carlos Andrade", "carlos.andrade@saolucas.com.br", "62991230001", 120000.0),
+    ("Fernanda Lima", "fernanda.lima@saolucas.com.br", "62991230002", 95000.0),
+    ("Roberto Souza", "roberto.souza@saolucas.com.br", "62991230003", 110000.0),
+]
+
+VENDEDORES_EMPRESA2 = [
+    ("Juliana Mendes", "juliana.mendes@boidourado.com.br", "65992300001", 80000.0),
+    ("Paulo Cardoso", "paulo.cardoso@boidourado.com.br", "65992300002", 90000.0),
+]
+
+# Condicoes de pagamento variadas para distribuir entre clientes.
+CONDICOES_PAGAMENTO = ["A vista", "30 dias", "30/60", "30/60/90", "7 dias"]
+
+
+def _seed_vendedores(db: Session, empresa_id: int | None, especificacao) -> None:
+    """Cria vendedores para uma empresa. Idempotente por (nome, empresa_id)."""
+    if not empresa_id:
+        return
+    try:
+        existentes = {
+            nome
+            for (nome,) in db.query(Vendedor.nome)
+            .filter(Vendedor.empresa_id == empresa_id)
+            .all()
+        }
+        novos = 0
+        for nome, email, telefone, meta in especificacao:
+            if nome in existentes:
+                continue
+            db.add(
+                Vendedor(
+                    nome=nome,
+                    email=email,
+                    telefone=telefone,
+                    ativo=True,
+                    meta_mensal=meta,
+                    empresa_id=empresa_id,
+                )
+            )
+            novos += 1
+        if novos:
+            db.commit()
+            logger.info(
+                "seed_demo: %d vendedores criados (empresa_id=%s)", novos, empresa_id
+            )
+    except Exception:
+        logger.exception("seed_demo: falha ao semear vendedores (ignorado)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+def _atribuir_vendedores_clientes(db: Session, empresa_id: int | None) -> None:
+    """Enriquece clientes da empresa com vendedor_id e dados comerciais.
+
+    Idempotente: so preenche campos NULOS. Distribui vendedor_id entre os
+    vendedores ativos da mesma empresa. Tambem preenche email/telefone
+    ficticios, condicao_pagamento variada e limite_credito plausivel.
+    Defensivo: nunca derruba o app.
+    """
+    if not empresa_id:
+        return
+    try:
+        vendedores = (
+            db.query(Vendedor)
+            .filter(Vendedor.empresa_id == empresa_id)
+            .order_by(Vendedor.id)
+            .all()
+        )
+        clientes = (
+            db.query(Cliente)
+            .filter(Cliente.empresa_id == empresa_id)
+            .order_by(Cliente.id)
+            .all()
+        )
+        if not clientes:
+            return
+        rng = random.Random(f"comercial-{empresa_id}")
+        alterados = 0
+        for i, c in enumerate(clientes):
+            mudou = False
+            if c.vendedor_id is None and vendedores:
+                c.vendedor_id = vendedores[i % len(vendedores)].id
+                mudou = True
+            if not getattr(c, "email", None):
+                slug = "".join(ch for ch in c.nome.lower() if ch.isalnum())[:14] or "cliente"
+                c.email = f"contato@{slug}.com.br"
+                mudou = True
+            if not getattr(c, "telefone", None):
+                c.telefone = c.whatsapp
+                mudou = True
+            if not getattr(c, "condicao_pagamento", None):
+                c.condicao_pagamento = CONDICOES_PAGAMENTO[i % len(CONDICOES_PAGAMENTO)]
+                mudou = True
+            if getattr(c, "limite_credito", None) is None:
+                c.limite_credito = float(rng.randint(5, 50) * 1000)
+                mudou = True
+            if mudou:
+                alterados += 1
+        if alterados:
+            db.commit()
+            logger.info(
+                "seed_demo: %d clientes enriquecidos comercialmente (empresa_id=%s)",
+                alterados,
+                empresa_id,
+            )
+    except Exception:
+        logger.exception(
+            "seed_demo: falha ao atribuir vendedores aos clientes (ignorado)"
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def seed_demo(db: Session) -> None:
     """Popula o banco com dados de demonstracao. Idempotente e defensivo."""
     try:
@@ -676,6 +796,8 @@ def seed_demo(db: Session) -> None:
                 _backfill_empresa_principal(db, principal_id)
                 _seed_produtos(db, principal_id)
                 _enriquecer_produtos(db, principal_id)
+                _seed_vendedores(db, principal_id, VENDEDORES_PRINCIPAL)
+                _atribuir_vendedores_clientes(db, principal_id)
                 secundaria = (
                     db.query(Empresa)
                     .filter(Empresa.nome == EMPRESA_SECUNDARIA_NOME)
@@ -684,6 +806,8 @@ def seed_demo(db: Session) -> None:
                 if secundaria:
                     _seed_empresa2(db, secundaria.id)
                     _enriquecer_produtos(db, secundaria.id)
+                    _seed_vendedores(db, secundaria.id, VENDEDORES_EMPRESA2)
+                    _atribuir_vendedores_clientes(db, secundaria.id)
             else:
                 _seed_produtos(db)
                 _enriquecer_produtos(db)
@@ -810,6 +934,8 @@ def seed_demo(db: Session) -> None:
             _backfill_empresa_principal(db, principal_id)
             _seed_produtos(db, principal_id)
             _enriquecer_produtos(db, principal_id)
+            _seed_vendedores(db, principal_id, VENDEDORES_PRINCIPAL)
+            _atribuir_vendedores_clientes(db, principal_id)
             secundaria = (
                 db.query(Empresa)
                 .filter(Empresa.nome == EMPRESA_SECUNDARIA_NOME)
@@ -818,6 +944,8 @@ def seed_demo(db: Session) -> None:
             if secundaria:
                 _seed_empresa2(db, secundaria.id)
                 _enriquecer_produtos(db, secundaria.id)
+                _seed_vendedores(db, secundaria.id, VENDEDORES_EMPRESA2)
+                _atribuir_vendedores_clientes(db, secundaria.id)
         else:
             _seed_produtos(db)
             _enriquecer_produtos(db)

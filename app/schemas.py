@@ -19,6 +19,19 @@ class ClienteSchema(BaseModel):
     cidade: str | None
     ativo: bool
     atendido_por_ia: bool
+    email: str | None = None
+    telefone: str | None = None
+    razao_social: str | None = None
+    inscricao_estadual: str | None = None
+    endereco: str | None = None
+    bairro: str | None = None
+    uf: str | None = None
+    cep: str | None = None
+    contato_nome: str | None = None
+    condicao_pagamento: str | None = None
+    limite_credito: float | None = None
+    observacoes: str | None = None
+    vendedor_id: int | None = None
     created_at: datetime
     total_pedidos: int = 0
     valor_total_comprado: float = 0.0
@@ -80,6 +93,19 @@ class ClienteCreate(BaseModel):
     cnpj: str | None = None
     cidade: str | None = None
     atendido_por_ia: bool = True
+    email: str | None = None
+    telefone: str | None = None
+    razao_social: str | None = None
+    inscricao_estadual: str | None = None
+    endereco: str | None = None
+    bairro: str | None = None
+    uf: str | None = None
+    cep: str | None = None
+    contato_nome: str | None = None
+    condicao_pagamento: str | None = None
+    limite_credito: float | None = None
+    observacoes: str | None = None
+    vendedor_id: int | None = None
 
 class ClienteUpdate(BaseModel):
     nome: str | None = None
@@ -88,6 +114,44 @@ class ClienteUpdate(BaseModel):
     tipo: ClienteTipo | None = None
     ativo: bool | None = None
     atendido_por_ia: bool | None = None
+    email: str | None = None
+    telefone: str | None = None
+    razao_social: str | None = None
+    inscricao_estadual: str | None = None
+    endereco: str | None = None
+    bairro: str | None = None
+    uf: str | None = None
+    cep: str | None = None
+    contato_nome: str | None = None
+    condicao_pagamento: str | None = None
+    limite_credito: float | None = None
+    observacoes: str | None = None
+    vendedor_id: int | None = None
+
+class VendedorSchema(BaseModel):
+    id: int
+    nome: str
+    email: str | None = None
+    telefone: str | None = None
+    ativo: bool
+    meta_mensal: float | None = None
+    empresa_id: int | None = None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class VendedorCreate(BaseModel):
+    nome: str
+    email: str | None = None
+    telefone: str | None = None
+    ativo: bool = True
+    meta_mensal: float | None = None
+
+class VendedorUpdate(BaseModel):
+    nome: str | None = None
+    email: str | None = None
+    telefone: str | None = None
+    ativo: bool | None = None
+    meta_mensal: float | None = None
 
 class ItemPedidoIn(BaseModel):
     produto: str

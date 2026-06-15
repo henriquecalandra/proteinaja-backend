@@ -36,6 +36,20 @@ class Cliente(Base):
     empresa_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ativo: Mapped[bool] = mapped_column(default=True)
     atendido_por_ia: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # --- Cadastro completo do cliente (todas nullable) ---
+    email: Mapped[str | None] = mapped_column(String(200), default=None)
+    telefone: Mapped[str | None] = mapped_column(String(40), default=None)
+    razao_social: Mapped[str | None] = mapped_column(String(200), default=None)
+    inscricao_estadual: Mapped[str | None] = mapped_column(String(40), default=None)
+    endereco: Mapped[str | None] = mapped_column(Text, default=None)
+    bairro: Mapped[str | None] = mapped_column(String(100), default=None)
+    uf: Mapped[str | None] = mapped_column(String(2), default=None)
+    cep: Mapped[str | None] = mapped_column(String(15), default=None)
+    contato_nome: Mapped[str | None] = mapped_column(String(200), default=None)
+    condicao_pagamento: Mapped[str | None] = mapped_column(String(40), default=None)
+    limite_credito: Mapped[float | None] = mapped_column(Float, default=None)
+    observacoes: Mapped[str | None] = mapped_column(Text, default=None)
+    vendedor_id: Mapped[int | None] = mapped_column(Integer, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     conversas: Mapped[list["Conversa"]] = relationship(back_populates="cliente")
 
@@ -112,6 +126,17 @@ class Usuario(Base):
     senha_hash: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="empresa")
     empresa_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class Vendedor(Base):
+    __tablename__ = "vendedores"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nome: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str | None] = mapped_column(String(200), default=None)
+    telefone: Mapped[str | None] = mapped_column(String(40), default=None)
+    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    meta_mensal: Mapped[float | None] = mapped_column(Float, default=None)
+    empresa_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 class Produto(Base):
