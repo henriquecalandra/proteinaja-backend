@@ -217,3 +217,33 @@ class DashboardAnalytics(BaseModel):
     ticket_medio: float
     total_a_receber: float
     total_pago: float
+
+# ---- Inteligencia: comparativo IA x humano, inativos, reposicao ----
+
+class ComparativoMetrica(BaseModel):
+    pedidos: int
+    volume: float
+    ticket_medio: float
+
+class Comparativo(BaseModel):
+    ia: ComparativoMetrica
+    humano: ComparativoMetrica
+    pct_ia: float
+
+class ClienteInativo(BaseModel):
+    id: int
+    nome: str
+    whatsapp: str
+    cidade: str | None = None
+    dias_sem_comprar: int
+    ultimo_pedido: str | None = None
+    total_pedidos: int
+
+class ClienteReposicao(BaseModel):
+    id: int
+    nome: str
+    whatsapp: str
+    intervalo_medio_dias: float
+    ultimo_pedido: str
+    proxima_sugerida: str
+    devido: bool

@@ -11,6 +11,8 @@ from app.schemas import (
     PedidosPorStatus,
     TopProduto,
     TopCliente,
+    Comparativo,
+    ComparativoMetrica,
 )
 from app.routers.auth import get_usuario_atual
 
@@ -148,4 +150,37 @@ def analytics(db: Session = Depends(get_db), usuario: Usuario = Depends(get_usua
         ticket_medio=ticket_medio,
         total_a_receber=total_a_receber,
         total_pago=total_pago,
+    )
+
+
+@router.get("/comparativo", response_model=Comparativo)
+def comparativo(db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
+    """Compara desempenho de pedidos feitos pela IA vs. equipe humana.
+
+    Isolado por empresa (admin ve tudo). Baseado em Pedido.origem (ia|humano).
+    """
+    admin = _is_admin(usuario)
+    empresa_id = usuario.empresa_id
+
+    pedidos_q = db.query(Pedido)
+    if not admin:
+        pedidos_q = pedidos_q.filter(Pedido.empresa_id == empresa_id)
+    pedidos = pedidos_q.all()
+
+    def _metrica(grupo: list[Pedido]) -> ComparativoMetrica:
+        n = len(grupo)
+        volume = sum(p.valor_total or 0.0 for p in grupo)
+        ticket = round(volume / n, 2) if n else 0.0
+        return ComparativoMetrica(pedidos=n, volume=round(volume, 2), ticket_medio=ticket)
+
+    ia_pedidos = [p for p in pedidos if p.origem == PedidoOrigem.ia]
+    humano_pedidos = [p for p in pedidos if p.origem == PedidoOrigem.humano]
+
+    total = len(pedidos)
+    pct_ia = round(len(ia_pedidos) / total * 100, 1) if total > 0 else 0.0
+
+    return Comparativo(
+        ia=_metrica(ia_pedidos),
+        humano=_metrica(humano_pedidos),
+        pct_ia=pct_ia,
     )

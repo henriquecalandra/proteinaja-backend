@@ -1,9 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Cliente, Pedido, Conversa, Usuario
-from app.schemas import ClienteSchema, ClienteCreate, ClienteUpdate, ClienteDetalhe
+from app.schemas import (
+    ClienteSchema,
+    ClienteCreate,
+    ClienteUpdate,
+    ClienteDetalhe,
+    ClienteInativo,
+    ClienteReposicao,
+)
 from app.routers.auth import get_usuario_atual
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -11,6 +19,18 @@ router = APIRouter(prefix="/clients", tags=["clients"])
 
 def _is_admin(usuario: Usuario) -> bool:
     return usuario.role == "admin"
+
+
+def _to_dt(valor) -> datetime | None:
+    """Parsing defensivo de created_at (datetime ou str ISO) -> datetime."""
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor
+    try:
+        return datetime.fromisoformat(str(valor))
+    except (ValueError, TypeError):
+        return None
 
 
 @router.get("/", response_model=list[ClienteSchema])
@@ -71,6 +91,102 @@ def atualizar_cliente(cliente_id: int, body: ClienteUpdate,
     schema.total_pedidos = total_pedidos
     schema.valor_total_comprado = float(valor_total)
     return schema
+
+@router.get("/inativos", response_model=list[ClienteInativo])
+def clientes_inativos(
+    dias: int = Query(30, ge=0),
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_usuario_atual),
+):
+    """Clientes sem pedido ha mais de 'dias' dias (ou que nunca compraram).
+
+    Isolado por empresa (admin ve tudo). Ordenado por dias_sem_comprar desc.
+    """
+    query = db.query(Cliente)
+    if not _is_admin(usuario):
+        query = query.filter(Cliente.empresa_id == usuario.empresa_id)
+    clientes = query.all()
+
+    agora = datetime.utcnow()
+    limite = agora - timedelta(days=dias)
+    resultado: list[ClienteInativo] = []
+
+    for cliente in clientes:
+        pedidos = db.query(Pedido).filter(Pedido.cliente_id == cliente.id).all()
+        datas = [d for d in (_to_dt(p.created_at) for p in pedidos) if d is not None]
+        total_pedidos = len(pedidos)
+
+        if datas:
+            ultimo = max(datas)
+            dias_sem = (agora - ultimo).days
+            # so e inativo se o ultimo pedido for anterior ao limite
+            if ultimo > limite:
+                continue
+            ultimo_iso = ultimo.isoformat()
+        else:
+            # nunca comprou -> sempre inativo
+            ultimo = None
+            dias_sem = (agora - _to_dt(cliente.created_at)).days if _to_dt(cliente.created_at) else 0
+            ultimo_iso = None
+
+        resultado.append(ClienteInativo(
+            id=cliente.id,
+            nome=cliente.nome,
+            whatsapp=cliente.whatsapp,
+            cidade=cliente.cidade,
+            dias_sem_comprar=max(dias_sem, 0),
+            ultimo_pedido=ultimo_iso,
+            total_pedidos=total_pedidos,
+        ))
+
+    resultado.sort(key=lambda c: c.dias_sem_comprar, reverse=True)
+    return resultado
+
+
+@router.get("/reposicao", response_model=list[ClienteReposicao])
+def clientes_reposicao(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_usuario_atual),
+):
+    """Sugestao de reposicao para clientes com >=2 pedidos.
+
+    Isolado por empresa (admin ve tudo). intervalo_medio = media dos gaps entre
+    pedidos consecutivos; proxima_sugerida = ultimo + intervalo_medio;
+    devido = proxima_sugerida <= hoje. Ordenado: devido primeiro.
+    """
+    query = db.query(Cliente)
+    if not _is_admin(usuario):
+        query = query.filter(Cliente.empresa_id == usuario.empresa_id)
+    clientes = query.all()
+
+    agora = datetime.utcnow()
+    resultado: list[ClienteReposicao] = []
+
+    for cliente in clientes:
+        pedidos = db.query(Pedido).filter(Pedido.cliente_id == cliente.id).all()
+        datas = sorted(d for d in (_to_dt(p.created_at) for p in pedidos) if d is not None)
+        if len(datas) < 2:
+            continue
+
+        gaps = [(datas[i] - datas[i - 1]).total_seconds() / 86400.0 for i in range(1, len(datas))]
+        intervalo_medio = sum(gaps) / len(gaps)
+        ultimo = datas[-1]
+        proxima = ultimo + timedelta(days=intervalo_medio)
+        devido = proxima <= agora
+
+        resultado.append(ClienteReposicao(
+            id=cliente.id,
+            nome=cliente.nome,
+            whatsapp=cliente.whatsapp,
+            intervalo_medio_dias=round(intervalo_medio, 1),
+            ultimo_pedido=ultimo.isoformat(),
+            proxima_sugerida=proxima.isoformat(),
+            devido=devido,
+        ))
+
+    resultado.sort(key=lambda c: c.devido, reverse=True)
+    return resultado
+
 
 @router.get("/{cliente_id}", response_model=ClienteDetalhe)
 def detalhe_cliente(cliente_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_atual)):
